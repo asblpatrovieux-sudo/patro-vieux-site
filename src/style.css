@@ -27,3 +27,68 @@
 /* Gestion administrative des membres */
 .admin-card-link{display:inline-flex;align-items:center;gap:5px;margin-top:12px;border:0;background:transparent;color:#dcfce7;font-weight:900;padding:0}.admin-users-page{min-height:72vh;padding:52px max(5vw,22px);background:#f7faf8}.admin-users-head{max-width:1250px;margin:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}.admin-users-head h1{font-size:clamp(2.3rem,5vw,4rem);margin:15px 0 5px}.admin-users-head p{color:#64748b}.admin-count{display:grid;justify-items:center;background:#fff8d9;border-radius:18px;padding:15px 24px}.admin-count strong{font-size:2rem;color:#166534}.admin-count span{color:#64748b;font-weight:800}.users-toolbar{max-width:1250px;margin:28px auto 14px;display:flex;align-items:center;gap:12px;background:white;border-radius:17px;padding:13px 17px}.users-toolbar select,.role-select select{border:1px solid #cbd5e1;border-radius:10px;padding:9px;background:white;font:inherit}.users-toolbar>span{margin-left:auto;color:#64748b;font-weight:800}.users-list{max-width:1250px;margin:auto;display:grid;gap:12px}.user-row{display:grid;grid-template-columns:55px minmax(200px,1fr) auto 160px minmax(180px,auto);align-items:center;gap:17px;background:white;border-radius:18px;padding:17px;box-shadow:0 5px 20px #14291d0b}.user-avatar{width:50px;height:50px;display:grid;place-items:center;border-radius:50%;background:#dcfce7;color:#166534;font-weight:900}.user-main h2,.user-main p{margin:0}.user-main h2{font-size:1.05rem}.user-main p,.user-main small{color:#64748b}.status-badge{border-radius:999px;padding:6px 10px;font-size:.75rem;font-weight:900}.status-en_attente{background:#fef3c7;color:#92400e}.status-actif{background:#dcfce7;color:#166534}.status-desactive{background:#e2e8f0;color:#475569}.status-refuse{background:#fee2e2;color:#991b1b}.role-select{display:grid;gap:4px;font-size:.75rem;color:#64748b}.user-actions{display:flex;justify-content:flex-end;gap:7px;flex-wrap:wrap}.user-actions button{border:0;border-radius:10px;padding:9px 12px;font-weight:900}.approve-button{background:#166534;color:white}.reject-button{background:#fee2e2;color:#991b1b}.disable-button{background:#e2e8f0;color:#334155}.self-label{color:#64748b;font-weight:800}.calendar-loading{max-width:1250px;margin:auto;min-height:220px;display:grid;place-content:center;justify-items:center;gap:10px;background:white;border-radius:22px}@media(max-width:950px){.user-row{grid-template-columns:50px 1fr auto}.role-select,.user-actions{grid-column:2/-1}.user-actions{justify-content:flex-start}}@media(max-width:650px){.admin-users-head{align-items:flex-start;flex-direction:column}.users-toolbar{align-items:stretch;flex-direction:column}.users-toolbar>span{margin-left:0}.user-row{grid-template-columns:48px 1fr}.status-badge{grid-column:2}.role-select,.user-actions{grid-column:1/-1}}
 
+
+/* Espace administratif des publications */
+.posts-page{min-height:72vh;padding:52px max(5vw,22px);background:#f7faf8}.posts-head{max-width:1200px;margin:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}.posts-head h1{font-size:clamp(2.3rem,5vw,4rem);margin:15px 0 5px}.posts-head p{color:#64748b}.post-form-card{max-width:1200px;margin:28px auto;background:white;border-radius:25px;padding:28px}.post-form{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0;box-shadow:none}.post-form select,.posts-toolbar select{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:12px;background:white;font:inherit}.post-content-field,.post-form .form-actions{grid-column:1/-1}.check-label{display:flex;align-items:center;gap:9px}.check-label input{width:auto;margin:0}.posts-toolbar{max-width:1200px;margin:28px auto 18px;display:grid;grid-template-columns:1fr 280px;gap:14px}.search-box{display:flex;align-items:center;gap:9px;background:white;border:1px solid #cbd5e1;border-radius:12px;padding:0 12px}.search-box input{border:0;margin:0;outline:0}.posts-grid{max-width:1200px;margin:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.post-card{position:relative;background:white;border-radius:22px;padding:24px;box-shadow:0 6px 22px #14291d0b;cursor:pointer;transition:.18s}.post-card:hover{transform:translateY(-3px);box-shadow:0 13px 30px #14291d18}.post-card small{display:block;color:#166534;font-weight:900;margin-top:12px}.post-card h2{font-size:1.2rem}.post-card>p{color:#64748b;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.post-card footer{padding:15px 0 0;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:.8rem}.post-pin{position:absolute;right:18px;top:18px;color:#d39e00}.post-status{display:inline-block;border-radius:999px;padding:5px 9px;background:#e2e8f0;font-size:.7rem;font-weight:900;text-transform:uppercase}.post-status-publie{background:#dcfce7;color:#166534}.post-status-en_attente{background:#fef3c7;color:#92400e}.post-modal-backdrop{position:fixed;inset:0;z-index:100;background:#0f172a99;display:grid;place-items:center;padding:20px;overflow:auto}.post-modal{position:relative;width:min(760px,100%);max-height:90vh;overflow:auto;background:white;border-radius:25px;padding:32px}.modal-close{position:absolute;right:16px;top:12px;border:0;background:transparent;font-size:2rem}.post-by{color:#64748b}.post-full-content{white-space:pre-wrap;line-height:1.75;margin:24px 0}.external-post-link{display:inline-flex;align-items:center;gap:7px;color:#166534;font-weight:900}.post-admin-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:25px;padding-top:20px;border-top:1px solid #e2e8f0}.delete-post{display:flex;align-items:center;gap:6px;border:0;background:#fee2e2;color:#991b1b;border-radius:10px;padding:9px 12px;font-weight:900}@media(max-width:850px){.posts-grid{grid-template-columns:1fr 1fr}.posts-head{align-items:flex-start;flex-direction:column}}@media(max-width:600px){.post-form,.posts-toolbar,.posts-grid{grid-template-columns:1fr}.post-content-field,.post-form .form-actions{grid-column:1}.post-modal{padding:25px 20px}}
+
+
+/* Alignement des boutons des cartes du tableau de bord */
+.dashboard-grid article {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-grid article > p {
+  flex-grow: 1;
+}
+
+.dashboard-grid .card-link,
+.dashboard-grid .admin-card-link {
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+/* Alignement du texte et de la flèche des boutons */
+.dashboard-grid .card-link,
+.dashboard-grid .admin-card-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  line-height: 1;
+}
+
+.dashboard-grid .card-link svg,
+.dashboard-grid .admin-card-link svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+
+/* Modification des publications */
+.edit-post{border:0;background:#dbeafe;color:#1d4ed8;border-radius:10px;padding:9px 12px;font-weight:900}
+.edit-post:hover{background:#bfdbfe}
+
+
+/* Centrage du logo dans le cadre blanc de l’accueil */
+.hero-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-logo .logo {
+  display: block;
+  width: min(100%, 525px);
+  height: auto;
+  margin: 0;
+}
+
+
+/* Commentaires des publications */
+.comments-section{margin-top:28px;padding-top:22px;border-top:1px solid #e2e8f0}.comments-section>h2{display:flex;align-items:center;gap:8px;font-size:1.15rem}.comments-list{display:grid;gap:10px;margin:15px 0}.comment-item{position:relative;background:#f8fafc;border-radius:14px;padding:14px}.comment-item>div{display:flex;justify-content:space-between;gap:12px}.comment-item small,.no-comments{color:#64748b}.comment-item p{white-space:pre-wrap;margin:9px 0}.delete-comment{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;color:#b91c1c;padding:0;font-weight:800}.comment-form{display:grid;gap:10px;padding:0;box-shadow:none}.comment-form textarea{margin:0}.comment-form .primary{justify-self:end}
+
+
+/* Compteur de commentaires sur les cartes de publication */
+.comment-count{position:absolute;right:18px;bottom:18px;display:inline-flex;align-items:center;gap:5px;border-radius:999px;background:#e0f2fe;color:#075985;padding:5px 9px;font-size:.75rem;font-weight:900}
+.post-card footer{padding-right:58px}
