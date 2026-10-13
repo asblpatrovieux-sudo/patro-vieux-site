@@ -25,6 +25,7 @@ function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authView, setAuthView] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [privatePage, setPrivatePage] = useState("dashboard");
@@ -71,7 +72,9 @@ function App() {
     await supabase.auth.signOut();
     setProfile(null);
     setAuthView(false);
+    setPrivatePage("dashboard");
     setMessage("Vous êtes déconnecté.");
+    setTimeout(() => setMessage(""), 3000);
   }
 
   if (loading) {
@@ -102,9 +105,9 @@ function App() {
     </header>
 
     {authView ? (
-      activeUser ? (privatePage === "calendar" ? <CalendarPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : <MemberDashboard profile={profile} onLogout={signOut} openCalendar={() => setPrivatePage("calendar")} />)
+      activeUser ? (privatePage === "calendar" ? <CalendarPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "admin-users" ? <AdminUsersPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : <MemberDashboard profile={profile} onLogout={signOut} openCalendar={() => setPrivatePage("calendar")} openAdmin={() => setPrivatePage("admin-users")} />)
       : session && profile ? <PendingAccount profile={profile} onLogout={signOut} />
-      : <LoginPage onBack={() => setAuthView(false)} />
+      : authMode === "register" ? <RegisterPage onBack={() => setAuthView(false)} onLogin={() => setAuthMode("login")} /> : <LoginPage onBack={() => setAuthView(false)} onRegister={() => setAuthMode("register")} />
     ) : (
       <PublicSite go={go} />
     )}
@@ -114,7 +117,7 @@ function App() {
   </>;
 }
 
-function LoginPage({ onBack }) {
+function LoginPage({ onBack, onRegister }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -140,9 +143,30 @@ function LoginPage({ onBack }) {
         {error && <p className="form-error">{error}</p>}
         <button className="primary auth-submit" disabled={busy}>{busy ? "Connexion…" : "Se connecter"}</button>
       </form>
-      <button className="text-button" onClick={onBack}>Retour au site public</button>
+      <button className="text-button" onClick={onRegister}>S'inscrire</button><button className="text-button secondary-back" onClick={onBack}>Retour au site public</button>
     </section>
   </main>;
+}
+
+function RegisterPage({ onBack, onLogin }) {
+  const [form,setForm]=useState({first_name:"",last_name:"",email:"",password:""});
+  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[sent,setSent]=useState(false);
+  async function submit(e){
+    e.preventDefault(); setBusy(true); setError("");
+    if(form.password.length<8){setError("Le mot de passe doit contenir au moins 8 caractères.");setBusy(false);return}
+    const {error:signupError}=await supabase.auth.signUp({
+      email:form.email,password:form.password,
+      options:{
+        data:{first_name:form.first_name.trim(),last_name:form.last_name.trim()},
+        emailRedirectTo:window.location.origin
+      }
+    });
+    if(signupError)setError(signupError.message.includes("already registered")?"Cette adresse e-mail est déjà utilisée.":signupError.message);
+    else setSent(true);
+    setBusy(false);
+  }
+  if(sent)return <main className="auth-page"><section className="auth-card"><div className="auth-icon"><Mail/></div><h1>Vérifiez votre e-mail</h1><p>Un e-mail de confirmation a été envoyé à <strong>{form.email}</strong>.</p><p>Après confirmation, votre compte restera en attente jusqu’à sa validation par un administrateur.</p><button className="primary auth-submit" onClick={onLogin}>Retour à la connexion</button></section></main>;
+  return <main className="auth-page"><section className="auth-card register-card"><div className="auth-icon"><Users/></div><h1>Demander un accès</h1><p>Créez votre compte. Un administrateur devra ensuite valider votre inscription.</p><form onSubmit={submit} className="auth-form"><div className="register-names"><label>Prénom<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label><label>Nom<input required value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/></label></div><label>Adresse e-mail<input required type="email" autoComplete="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Mot de passe<input required type="password" minLength="8" autoComplete="new-password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label><small>Au moins 8 caractères. N’utilisez pas un mot de passe déjà employé ailleurs.</small>{error&&<p className="form-error">{error}</p>}<button className="primary auth-submit" disabled={busy}>{busy?"Création…":"Créer mon compte"}</button></form><button className="text-button" onClick={onLogin}>J’ai déjà un compte</button><button className="text-button secondary-back" onClick={onBack}>Retour au site public</button></section></main>;
 }
 
 function PendingAccount({ profile, onLogout }) {
@@ -156,7 +180,7 @@ function PendingAccount({ profile, onLogout }) {
   </section></main>;
 }
 
-function MemberDashboard({ profile, onLogout, openCalendar }) {
+function MemberDashboard({ profile, onLogout, openCalendar, openAdmin }) {
   const isAdmin = profile.role === "administrateur";
   return <main className="dashboard-page">
     <section className="dashboard-head">
@@ -167,8 +191,23 @@ function MemberDashboard({ profile, onLogout, openCalendar }) {
       <article className="clickable-card" onClick={openCalendar}><CalendarDays /><h2>Calendrier et réservations</h2><p>Consulter et gérer les événements et réservations du local.</p><button className="card-link">Ouvrir <ChevronRight size={17} /></button></article>
       <article><Users /><h2>Espace administratif</h2><p>Les publications et procédures seront reliées à Supabase prochainement.</p></article>
       <article><ChevronRight /><h2>Liens utiles</h2><p>Les liens administrables seront affichés depuis la base de données.</p></article>
-      {isAdmin && <article className="admin-card"><ShieldCheck /><h2>Administration</h2><p>Ton rôle administrateur est bien reconnu par le site.</p></article>}
+      {isAdmin && <article className="admin-card clickable-card" onClick={openAdmin}><ShieldCheck /><h2>Administration</h2><p>Valider les inscriptions et gérer les rôles et les accès.</p><button className="admin-card-link">Gérer les membres <ChevronRight size={17} /></button></article>}
     </section>
+  </main>;
+}
+
+function AdminUsersPage({ profile, onBack }) {
+  const [users,setUsers]=useState([]),[filter,setFilter]=useState("tous"),[loadingUsers,setLoadingUsers]=useState(true),[error,setError]=useState(""),[notice,setNotice]=useState("");
+  async function loadUsers(){setLoadingUsers(true);setError("");const {data,error:loadError}=await supabase.from("profiles").select("id,first_name,last_name,email,role,status,created_at").order("created_at",{ascending:false});if(loadError)setError("Impossible de charger les utilisateurs : "+loadError.message);else setUsers(data||[]);setLoadingUsers(false)}
+  useEffect(()=>{loadUsers()},[]);
+  async function updateUser(id,changes,label){setError("");setNotice("");const {error:updateError}=await supabase.from("profiles").update({...changes,updated_at:new Date().toISOString()}).eq("id",id);if(updateError)setError("Modification impossible : "+updateError.message);else{setNotice(label);await loadUsers()}}
+  const labels={en_attente:"En attente",actif:"Actif",desactive:"Désactivé",refuse:"Refusé"};
+  const visible=filter==="tous"?users:users.filter(user=>user.status===filter);
+  return <main className="admin-users-page"><section className="admin-users-head"><div><button className="text-button back-button" onClick={onBack}>← Retour au tableau de bord</button><span className="pill">Administration</span><h1>Gestion des membres</h1><p>Validez les inscriptions et gérez les accès au portail.</p></div><div className="admin-count"><strong>{users.filter(u=>u.status==="en_attente").length}</strong><span>en attente</span></div></section>
+  {notice&&<p className="calendar-notice">{notice}</p>}{error&&<p className="form-error calendar-error">{error}</p>}
+  <section className="users-toolbar"><label>Filtrer par statut</label><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="tous">Tous les comptes</option>{Object.entries(labels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select><span>{visible.length} compte{visible.length>1?"s":""}</span></section>
+  {loadingUsers?<div className="calendar-loading"><LoaderCircle className="spin"/> Chargement…</div>:<section className="users-list">{visible.map(user=><article className="user-row" key={user.id}><div className="user-avatar">{user.first_name?.[0]}{user.last_name?.[0]}</div><div className="user-main"><h2>{user.first_name} {user.last_name}</h2><p>{user.email}</p><small>Inscrit le {new Date(user.created_at).toLocaleDateString("fr-BE")}</small></div><span className={`status-badge status-${user.status}`}>{labels[user.status]}</span><label className="role-select">Rôle<select value={user.role} disabled={user.id===profile.id} onChange={e=>updateUser(user.id,{role:e.target.value},"Rôle mis à jour.")}><option value="membre">Membre</option><option value="administrateur">Administrateur</option></select></label><div className="user-actions">{user.status==="en_attente"&&<><button className="approve-button" onClick={()=>updateUser(user.id,{status:"actif"},"Inscription validée.")}>Valider</button><button className="reject-button" onClick={()=>updateUser(user.id,{status:"refuse"},"Inscription refusée.")}>Refuser</button></>}{user.status==="actif"&&user.id!==profile.id&&<button className="disable-button" onClick={()=>updateUser(user.id,{status:"desactive"},"Compte désactivé.")}>Désactiver</button>}{(user.status==="desactive"||user.status==="refuse")&&<button className="approve-button" onClick={()=>updateUser(user.id,{status:"actif"},"Compte réactivé.")}>Réactiver</button>}{user.id===profile.id&&<small className="self-label">Votre compte</small>}</div></article>)}</section>}
+  {!loadingUsers&&!visible.length&&<div className="empty-calendar"><Users/><h2>Aucun compte</h2><p>Aucun utilisateur ne correspond à ce filtre.</p></div>}
   </main>;
 }
 
@@ -211,4 +250,7 @@ function Footer() {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
+
+
+
 
