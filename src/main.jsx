@@ -26,6 +26,7 @@ function App() {
   const [profile, setProfile] = useState(null);
   const [authView, setAuthView] = useState(false);
   const [authMode, setAuthMode] = useState("login");
+  const [recoveryMode, setRecoveryMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [privatePage, setPrivatePage] = useState("dashboard");
@@ -58,10 +59,17 @@ function App() {
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       setSession(nextSession);
-      if (nextSession?.user) await loadProfile(nextSession.user.id);
-      else setProfile(null);
+      if (event === "PASSWORD_RECOVERY") {
+        setRecoveryMode(true);
+        setAuthView(true);
+        setProfile(null);
+      } else if (nextSession?.user) {
+        await loadProfile(nextSession.user.id);
+      } else {
+        setProfile(null);
+      }
       setLoading(false);
     });
 
@@ -104,10 +112,14 @@ function App() {
       <button className="menu" aria-label="Menu" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
     </header>
 
-    {authView ? (
+    {recoveryMode ? (
+      <ResetPasswordPage onDone={async () => { await supabase.auth.signOut(); setRecoveryMode(false); setAuthMode("login"); setAuthView(true); }} />
+    ) : authView ? (
       activeUser ? (privatePage === "calendar" ? <CalendarPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "posts" ? <PostsPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "links" ? <UsefulLinksPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "admin-users" ? <AdminUsersPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : <MemberDashboard profile={profile} onLogout={signOut} openCalendar={() => setPrivatePage("calendar")} openPosts={() => setPrivatePage("posts")} openLinks={() => setPrivatePage("links")} openAdmin={() => setPrivatePage("admin-users")} />)
       : session && profile ? <PendingAccount profile={profile} onLogout={signOut} />
-      : authMode === "register" ? <RegisterPage onBack={() => setAuthView(false)} onLogin={() => setAuthMode("login")} /> : <LoginPage onBack={() => setAuthView(false)} onRegister={() => setAuthMode("register")} />
+      : authMode === "register" ? <RegisterPage onBack={() => setAuthView(false)} onLogin={() => setAuthMode("login")} />
+      : authMode === "forgot" ? <ForgotPasswordPage onBack={() => setAuthMode("login")} />
+      : <LoginPage onBack={() => setAuthView(false)} onRegister={() => setAuthMode("register")} onForgot={() => setAuthMode("forgot")} />
     ) : (
       <PublicSite go={go} />
     )}
@@ -117,7 +129,7 @@ function App() {
   </>;
 }
 
-function LoginPage({ onBack, onRegister }) {
+function LoginPage({ onBack, onRegister, onForgot }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -143,9 +155,22 @@ function LoginPage({ onBack, onRegister }) {
         {error && <p className="form-error">{error}</p>}
         <button className="primary auth-submit" disabled={busy}>{busy ? "Connexion…" : "Se connecter"}</button>
       </form>
-      <button className="text-button" onClick={onRegister}>S'inscrire</button><button className="text-button secondary-back" onClick={onBack}>Retour au site public</button>
+      <button className="text-button forgot-button" onClick={onForgot}>Mot de passe oublié ?</button><button className="text-button" onClick={onRegister}>S'inscrire</button><button className="text-button secondary-back" onClick={onBack}>Retour au site public</button>
     </section>
   </main>;
+}
+
+
+function ForgotPasswordPage({ onBack }) {
+  const [email,setEmail]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[sent,setSent]=useState(false);
+  async function submit(e){e.preventDefault();setBusy(true);setError("");const {error:resetError}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});if(resetError)setError("Impossible d’envoyer l’e-mail de récupération. Réessayez plus tard.");else setSent(true);setBusy(false)}
+  return <main className="auth-page"><section className="auth-card"><div className="auth-icon"><Mail/></div><h1>Mot de passe oublié</h1>{sent?<><p>Si un compte correspond à cette adresse, un e-mail de récupération vient d’être envoyé.</p><p>Vérifiez également les dossiers Spam et Promotions.</p><button className="primary auth-submit" onClick={onBack}>Retour à la connexion</button></>:<><p>Indiquez votre adresse e-mail pour recevoir un lien sécurisé.</p><form className="auth-form" onSubmit={submit}><label>Adresse e-mail<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label>{error&&<p className="form-error">{error}</p>}<button className="primary auth-submit" disabled={busy}>{busy?"Envoi…":"Envoyer le lien"}</button></form><button className="text-button" onClick={onBack}>Retour à la connexion</button></>}</section></main>;
+}
+
+function ResetPasswordPage({ onDone }) {
+  const [password,setPassword]=useState(""),[confirmation,setConfirmation]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[done,setDone]=useState(false);
+  async function submit(e){e.preventDefault();setError("");if(password.length<8){setError("Le mot de passe doit contenir au moins 8 caractères.");return}if(password!==confirmation){setError("Les deux mots de passe ne correspondent pas.");return}setBusy(true);const {error:updateError}=await supabase.auth.updateUser({password});if(updateError)setError("Le mot de passe n’a pas pu être modifié. Le lien est peut-être expiré.");else setDone(true);setBusy(false)}
+  return <main className="auth-page"><section className="auth-card"><div className="auth-icon"><LockKeyhole/></div><h1>Nouveau mot de passe</h1>{done?<><p>Votre mot de passe a été modifié avec succès.</p><button className="primary auth-submit" onClick={onDone}>Se connecter</button></>:<><p>Choisissez un nouveau mot de passe d’au moins 8 caractères.</p><form className="auth-form" onSubmit={submit}><label>Nouveau mot de passe<input type="password" minLength="8" autoComplete="new-password" required value={password} onChange={e=>setPassword(e.target.value)}/></label><label>Confirmer le mot de passe<input type="password" minLength="8" autoComplete="new-password" required value={confirmation} onChange={e=>setConfirmation(e.target.value)}/></label>{error&&<p className="form-error">{error}</p>}<button className="primary auth-submit" disabled={busy}>{busy?"Enregistrement…":"Enregistrer le nouveau mot de passe"}</button></form></>}</section></main>;
 }
 
 function RegisterPage({ onBack, onLogin }) {

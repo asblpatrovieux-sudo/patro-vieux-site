@@ -102,3 +102,7 @@
 .links-page > .empty-calendar {
   margin-top: 28px;
 }
+
+
+/* Récupération du mot de passe */
+.forgot-button{margin-top:14px;color:#166534;text-decoration:underline;text-underline-offset:3px}
