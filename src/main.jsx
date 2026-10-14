@@ -2,7 +2,7 @@
 import { createRoot } from "react-dom/client";
 import {
   Menu, X, Mail, Phone, MapPin, Users, Trees, CalendarDays,
-  LockKeyhole, ChevronRight, LogIn, LogOut, ShieldCheck, LoaderCircle, Plus, Trash2, Clock, Filter, BookOpen, Search, Pin, ExternalLink, MessageCircle, Send
+  LockKeyhole, ChevronRight, LogIn, LogOut, ShieldCheck, LoaderCircle, Plus, Trash2, Clock, Filter, BookOpen, Search, Pin, ExternalLink, MessageCircle, Send, Link2, ToggleLeft, ToggleRight, Pencil
 } from "lucide-react";
 import { supabase } from "./supabase";
 import "./style.css";
@@ -105,7 +105,7 @@ function App() {
     </header>
 
     {authView ? (
-      activeUser ? (privatePage === "calendar" ? <CalendarPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "posts" ? <PostsPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "admin-users" ? <AdminUsersPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : <MemberDashboard profile={profile} onLogout={signOut} openCalendar={() => setPrivatePage("calendar")} openPosts={() => setPrivatePage("posts")} openAdmin={() => setPrivatePage("admin-users")} />)
+      activeUser ? (privatePage === "calendar" ? <CalendarPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "posts" ? <PostsPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "links" ? <UsefulLinksPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "admin-users" ? <AdminUsersPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : <MemberDashboard profile={profile} onLogout={signOut} openCalendar={() => setPrivatePage("calendar")} openPosts={() => setPrivatePage("posts")} openLinks={() => setPrivatePage("links")} openAdmin={() => setPrivatePage("admin-users")} />)
       : session && profile ? <PendingAccount profile={profile} onLogout={signOut} />
       : authMode === "register" ? <RegisterPage onBack={() => setAuthView(false)} onLogin={() => setAuthMode("login")} /> : <LoginPage onBack={() => setAuthView(false)} onRegister={() => setAuthMode("register")} />
     ) : (
@@ -180,7 +180,7 @@ function PendingAccount({ profile, onLogout }) {
   </section></main>;
 }
 
-function MemberDashboard({ profile, onLogout, openCalendar, openPosts, openAdmin }) {
+function MemberDashboard({ profile, onLogout, openCalendar, openPosts, openLinks, openAdmin }) {
   const isAdmin = profile.role === "administrateur";
   return <main className="dashboard-page">
     <section className="dashboard-head">
@@ -190,12 +190,32 @@ function MemberDashboard({ profile, onLogout, openCalendar, openPosts, openAdmin
     <section className="dashboard-grid">
       <article className="clickable-card" onClick={openCalendar}><CalendarDays /><h2>Calendrier et réservations</h2><p>Consulter et gérer les événements et réservations du local.</p><button className="card-link">Ouvrir <ChevronRight size={17} /></button></article>
       <article className="clickable-card" onClick={openPosts}><BookOpen /><h2>Espace administratif</h2><p>Consulter les tutoriels, procédures et informations de l’ASBL.</p><button className="card-link">Ouvrir <ChevronRight size={17} /></button></article>
-      <article><ChevronRight /><h2>Liens utiles</h2><p>Les liens administrables seront affichés depuis la base de données.</p></article>
+      <article className="clickable-card" onClick={openLinks}><Link2 /><h2>Liens utiles</h2><p>Accéder rapidement aux outils, documents et ressources de l’ASBL.</p><button className="card-link">Ouvrir <ChevronRight size={17} /></button></article>
       {isAdmin && <article className="admin-card clickable-card" onClick={openAdmin}><ShieldCheck /><h2>Administration</h2><p>Valider les inscriptions et gérer les rôles et les accès.</p><button className="admin-card-link">Gérer les membres <ChevronRight size={17} /></button></article>}
     </section>
   </main>;
 }
 
+
+
+function UsefulLinksPage({ profile, onBack }) {
+  const isAdmin=profile.role==="administrateur";
+  const blank={title:"",description:"",url:"",icon:"link",display_order:0,is_active:true};
+  const [links,setLinks]=useState([]),[showForm,setShowForm]=useState(false),[editing,setEditing]=useState(null),[form,setForm]=useState(blank),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+  async function loadLinks(){setError("");const {data,error:loadError}=await supabase.from("useful_links").select("*").order("display_order").order("title");if(loadError)setError("Impossible de charger les liens : "+loadError.message);else setLinks(data||[])}
+  useEffect(()=>{loadLinks()},[]);
+  function startEdit(link){setEditing(link);setForm({title:link.title,description:link.description||"",url:link.url,icon:link.icon||"link",display_order:link.display_order,is_active:link.is_active});setShowForm(true);window.scrollTo({top:0,behavior:"smooth"})}
+  function cancel(){setEditing(null);setForm(blank);setShowForm(false)}
+  async function save(e){e.preventDefault();setBusy(true);setError("");const payload={...form,description:form.description||null,display_order:Number(form.display_order)||0,updated_at:new Date().toISOString()};let result;if(editing)result=await supabase.from("useful_links").update(payload).eq("id",editing.id);else{const {data:a}=await supabase.auth.getUser();result=await supabase.from("useful_links").insert({...payload,created_by:a.user.id})}if(result.error)setError("Enregistrement impossible : "+result.error.message);else{setNotice(editing?"Lien modifié.":"Lien ajouté.");cancel();await loadLinks()}setBusy(false)}
+  async function toggle(link){const {error}=await supabase.from("useful_links").update({is_active:!link.is_active,updated_at:new Date().toISOString()}).eq("id",link.id);if(error)setError(error.message);else await loadLinks()}
+  async function remove(link){if(!confirm(`Supprimer le lien « ${link.title} » ?`))return;const {error}=await supabase.from("useful_links").delete().eq("id",link.id);if(error)setError(error.message);else{setNotice("Lien supprimé.");await loadLinks()}}
+  const shown=isAdmin?links:links.filter(l=>l.is_active);
+  return <main className="links-page"><section className="links-head"><div><button className="text-button back-button" onClick={onBack}>← Retour au tableau de bord</button><span className="pill">Ressources</span><h1>Liens utiles</h1><p>Les outils et documents importants de l’ASBL au même endroit.</p></div>{isAdmin&&<button className="primary" onClick={()=>showForm?cancel():setShowForm(true)}><Plus size={18}/>Ajouter un lien</button>}</section>
+  {notice&&<p className="calendar-notice">{notice}</p>}{error&&<p className="form-error calendar-error">{error}</p>}
+  {showForm&&<section className="link-form-card"><h2>{editing?"Modifier le lien":"Ajouter un lien"}</h2><form className="link-form" onSubmit={save}><label>Titre<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label><label>URL<input required type="url" placeholder="https://..." value={form.url} onChange={e=>setForm({...form,url:e.target.value})}/></label><label className="link-description">Description<textarea rows="3" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label>Ordre d’affichage<input type="number" min="0" value={form.display_order} onChange={e=>setForm({...form,display_order:e.target.value})}/></label><label className="check-label"><input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/>Lien actif</label><div className="form-actions"><button type="button" className="logout-button" onClick={cancel}>Annuler</button><button className="primary" disabled={busy}>{busy?"Enregistrement…":editing?"Enregistrer les modifications":"Ajouter"}</button></div></form></section>}
+  {!shown.length?<div className="empty-calendar"><Link2/><h2>Aucun lien utile</h2><p>Ajoutez la première ressource de l’ASBL.</p></div>:<section className="links-grid">{shown.map(link=><article className={`useful-link-card ${!link.is_active?"link-inactive":""}`} key={link.id}><div className="link-icon"><Link2/></div><div className="link-body"><div><h2>{link.title}</h2>{!link.is_active&&<span>Désactivé</span>}</div>{link.description&&<p>{link.description}</p>}<a href={link.url} target="_blank" rel="noreferrer">Ouvrir le lien <ExternalLink size={16}/></a></div>{isAdmin&&<div className="link-admin-actions"><button title="Modifier" onClick={()=>startEdit(link)}><Pencil size={17}/></button><button title={link.is_active?"Désactiver":"Activer"} onClick={()=>toggle(link)}>{link.is_active?<ToggleRight size={20}/>:<ToggleLeft size={20}/>}</button><button className="link-delete" title="Supprimer" onClick={()=>remove(link)}><Trash2 size={17}/></button></div>}</article>)}</section>}
+  </main>;
+}
 
 function PostsPage({ profile, onBack }) {
   const isAdmin = profile.role === "administrateur";

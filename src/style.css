@@ -92,3 +92,13 @@
 /* Compteur de commentaires sur les cartes de publication */
 .comment-count{position:absolute;right:18px;bottom:18px;display:inline-flex;align-items:center;gap:5px;border-radius:999px;background:#e0f2fe;color:#075985;padding:5px 9px;font-size:.75rem;font-weight:900}
 .post-card footer{padding-right:58px}
+
+
+/* Espace des liens utiles */
+.links-page{min-height:72vh;padding:52px max(5vw,22px);background:#f7faf8}.links-head{max-width:1200px;margin:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}.links-head h1{font-size:clamp(2.3rem,5vw,4rem);margin:15px 0 5px}.links-head p{color:#64748b}.link-form-card{max-width:1200px;margin:28px auto;background:white;border-radius:25px;padding:28px}.link-form{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0;box-shadow:none}.link-description,.link-form .form-actions{grid-column:1/-1}.links-grid{max-width:1200px;margin:28px auto 0;display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.useful-link-card{position:relative;display:grid;grid-template-columns:54px 1fr auto;gap:16px;align-items:start;background:white;border-radius:20px;padding:20px;box-shadow:0 6px 22px #14291d0b}.link-inactive{opacity:.62}.link-icon{width:50px;height:50px;display:grid;place-items:center;border-radius:15px;background:#dcfce7;color:#166534}.link-body h2,.link-body p{margin:0}.link-body>div{display:flex;align-items:center;gap:9px}.link-body>div span{background:#e2e8f0;border-radius:999px;padding:4px 7px;font-size:.7rem;font-weight:900}.link-body p{color:#64748b;margin:8px 0 14px}.link-body a{display:inline-flex;align-items:center;gap:6px;color:#166534;font-weight:900}.link-admin-actions{display:flex;gap:5px}.link-admin-actions button{border:0;background:#f1f5f9;border-radius:9px;padding:8px;color:#334155}.link-admin-actions .link-delete{background:#fee2e2;color:#991b1b}@media(max-width:750px){.links-head{align-items:flex-start;flex-direction:column}.links-grid,.link-form{grid-template-columns:1fr}.link-description,.link-form .form-actions{grid-column:1}.useful-link-card{grid-template-columns:48px 1fr}.link-admin-actions{grid-column:1/-1;justify-content:flex-end}}
+
+
+/* Espace entre le bouton Ajouter un lien et le bloc vide */
+.links-page > .empty-calendar {
+  margin-top: 28px;
+}
