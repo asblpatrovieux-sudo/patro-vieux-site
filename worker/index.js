@@ -202,6 +202,32 @@ async function createUploadUrl(request, env) {
   };
 }
 
+function wait(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function headObjectWithRetry(env, storageKey) {
+  const delays = [0, 250, 500, 1000];
+  let lastError;
+  for (const delay of delays) {
+    if (delay) await wait(delay);
+    try {
+      return await s3Client(env).send(new HeadObjectCommand({
+        Bucket: env.NEON_STORAGE_BUCKET,
+        Key: storageKey,
+      }));
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  console.error("HeadObject failed after retries", {
+    name: lastError?.name,
+    message: lastError?.message,
+    status: lastError?.$metadata?.httpStatusCode,
+  });
+  throw lastError;
+}
+
 async function completeUpload(request, env) {
   const { token, userId } = await requireProfile(request, env, { admin: true });
   const body = await request.json();
@@ -214,9 +240,9 @@ async function completeUpload(request, env) {
 
   let object;
   try {
-    object = await s3Client(env).send(new HeadObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: body.storage_key }));
+    object = await headObjectWithRetry(env, body.storage_key);
   } catch {
-    throw new HttpError(409, "Le fichier envoyé n’a pas été trouvé dans le stockage.");
+    throw new HttpError(409, "Le fichier envoyé n’a pas été trouvé dans le stockage après plusieurs vérifications.");
   }
   if (Number(object.ContentLength) !== body.size_bytes || object.ContentType !== body.mime_type) {
     throw new HttpError(409, "Le fichier reçu ne correspond pas aux métadonnées annoncées.");
@@ -259,9 +285,9 @@ async function completeReplacement(request, env) {
 
   let object;
   try {
-    object = await s3Client(env).send(new HeadObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: body.storage_key }));
+    object = await headObjectWithRetry(env, body.storage_key);
   } catch {
-    throw new HttpError(409, "Le nouveau fichier n’a pas été trouvé dans le stockage.");
+    throw new HttpError(409, "Le nouveau fichier n’a pas été trouvé dans le stockage après plusieurs vérifications.");
   }
   if (Number(object.ContentLength) !== body.size_bytes || object.ContentType !== body.mime_type) {
     throw new HttpError(409, "Le nouveau fichier ne correspond pas aux métadonnées annoncées.");
