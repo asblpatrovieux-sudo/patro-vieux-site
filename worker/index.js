@@ -234,6 +234,54 @@ async function completeUpload(request, env) {
   return { attachment: (await insertResponse.json())?.[0] };
 }
 
+async function completeReplacement(request, env) {
+  const { token } = await requireProfile(request, env, { admin: true });
+  const body = await request.json();
+  assertUuid(body.attachment_id, "Pièce jointe");
+  assertUuid(body.post_id, "Publication");
+  assertFileMetadata(body);
+  if (typeof body.storage_key !== "string" || !body.storage_key.startsWith(`posts/${body.post_id}/`) || body.storage_key.includes("..")) {
+    throw new HttpError(400, "Clé de stockage invalide.");
+  }
+
+  const previous = await requireVisibleAttachment(env, token, body.attachment_id);
+  if (previous.post_id !== body.post_id) throw new HttpError(400, "Publication incohérente.");
+
+  let object;
+  try {
+    object = await s3Client(env).send(new HeadObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: body.storage_key }));
+  } catch {
+    throw new HttpError(409, "Le nouveau fichier n’a pas été trouvé dans le stockage.");
+  }
+  if (Number(object.ContentLength) !== body.size_bytes || object.ContentType !== body.mime_type) {
+    throw new HttpError(409, "Le nouveau fichier ne correspond pas aux métadonnées annoncées.");
+  }
+
+  const updateResponse = await dataApi(env, token, `/post_attachments?id=eq.${encodeURIComponent(body.attachment_id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      storage_key: body.storage_key,
+      original_name: body.original_name,
+      display_name: body.display_name?.trim() || null,
+      mime_type: body.mime_type,
+      size_bytes: body.size_bytes,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  if (!updateResponse.ok) {
+    await s3Client(env).send(new DeleteObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: body.storage_key })).catch(() => {});
+    throw new HttpError(400, "Le remplacement a été refusé par la base de données.");
+  }
+
+  try {
+    await s3Client(env).send(new DeleteObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: previous.storage_key }));
+  } catch {
+    console.error("Old attachment cleanup failed", previous.storage_key);
+  }
+  return { attachment: (await updateResponse.json())?.[0] };
+}
+
 async function createDownloadUrl(request, env) {
   const { token } = await requireProfile(request, env);
   const { attachment_id: attachmentId } = await request.json();
@@ -295,6 +343,7 @@ async function handleApi(request, env) {
     if (path === "/api/attachments/health" && request.method === "GET") result = { ok: true };
     else if (path === "/api/attachments/upload-url" && request.method === "POST") result = await createUploadUrl(request, env);
     else if (path === "/api/attachments/complete" && request.method === "POST") result = await completeUpload(request, env);
+    else if (path === "/api/attachments/replace-complete" && request.method === "POST") result = await completeReplacement(request, env);
     else if (path === "/api/attachments/download-url" && request.method === "POST") result = await createDownloadUrl(request, env);
     else if (path === "/api/attachments" && request.method === "DELETE") result = await deleteAttachment(request, env);
     else return json({ error: "Route API introuvable." }, 404, origin);
