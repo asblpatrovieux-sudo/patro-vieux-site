@@ -10,7 +10,10 @@
   },
 "vars": {
   "ALLOWED_ORIGIN": "https://patro-vieux-site.asblpatrovieux.workers.dev",
-  "NEON_STORAGE_BUCKET": "documents"
+  "NEON_STORAGE_BUCKET": "documents",
+  "AWS_REGION": "eu-central-1",
+  "AWS_ENDPOINT_URL_S3": "https://br-floral-bar-b9etq0c7.storage.c-7.eu-central-1.aws.neon.tech",
+  "NEON_DATA_API_URL": "https://ep-small-mode-b9dz0wb5.apirest.c-7.eu-central-1.aws.neon.tech/neondb/rest/v1"
 },
   "assets": {
     "directory": "./dist",
