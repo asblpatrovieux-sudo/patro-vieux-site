@@ -483,28 +483,47 @@ function PostsPage({ profile, onBack }) {
   const [pendingDelete,setPendingDelete]=useState(null);
   const [posts,setPosts]=useState([]),[authors,setAuthors]=useState({}),[query,setQuery]=useState(""),[category,setCategory]=useState("toutes"),[showForm,setShowForm]=useState(false),[selected,setSelected]=useState(null),[editing,setEditing]=useState(null),[form,setForm]=useState(blank),[busy,setBusy]=useState(false),[loadingPosts,setLoadingPosts]=useState(true),[commentCounts,setCommentCounts]=useState({}),[comments,setComments]=useState([]),[commentAuthors,setCommentAuthors]=useState({}),[commentText,setCommentText]=useState(""),[commentsBusy,setCommentsBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
   const [attachments,setAttachments]=useState([]),[selectedFiles,setSelectedFiles]=useState([]),[uploadStates,setUploadStates]=useState({}),[attachmentsBusy,setAttachmentsBusy]=useState(false);
+  const [fileError,setFileError]=useState("");
 
   async function loadPosts(){setLoadingPosts(true);setError("");const {data,error:postError}=await neon.from("posts").select("*").order("pinned",{ascending:false}).order("created_at",{ascending:false});if(postError){setError("Impossible de charger les publications : "+postError.message);setLoadingPosts(false);return}setPosts(data||[]);const ids=[...new Set((data||[]).map(p=>p.author_id))];if(ids.length){const {data:profiles}=await neon.from("profiles").select("id,first_name,last_name").in("id",ids);const map={};(profiles||[]).forEach(a=>map[a.id]=`${a.first_name} ${a.last_name}`);setAuthors(map)}const publishedIds=(data||[]).filter(p=>p.status==="publie"&&p.comments_enabled).map(p=>p.id);if(publishedIds.length){const {data:commentRows}=await neon.from("comments").select("post_id").in("post_id",publishedIds);const counts={};publishedIds.forEach(id=>counts[id]=0);(commentRows||[]).forEach(row=>counts[row.post_id]=(counts[row.post_id]||0)+1);setCommentCounts(counts)}else setCommentCounts({});setLoadingPosts(false)}
   useEffect(()=>{loadPosts()},[]);
 
+  function normalizeFile(file) {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    const types = {
+      pdf:"application/pdf", doc:"application/msword",
+      docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls:"application/vnd.ms-excel",
+      xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      png:"image/png", jpg:"image/jpeg", jpeg:"image/jpeg",
+    };
+    const mimeType = types[extension] || file.type;
+    return file.type === mimeType ? file : new File([file], file.name, { type:mimeType, lastModified:file.lastModified });
+  }
+
   function validateFiles(files) {
     const allowed = new Set(["application/pdf","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","image/png","image/jpeg"]);
-    const accepted = [];
-    for (const file of files) {
+    const accepted = files.map(normalizeFile);
+    for (const file of accepted) {
       if (!allowed.has(file.type)) throw new Error(`Type non autorisé : ${file.name}`);
       const maximum = file.type.startsWith("image/") ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
       if (file.size > maximum) throw new Error(`${file.name} dépasse la limite de ${file.type.startsWith("image/") ? "5" : "10"} Mo.`);
-      accepted.push(file);
     }
     if (accepted.length + selectedFiles.length > 10) throw new Error("Maximum 10 fichiers par publication.");
     return accepted;
   }
 
   function chooseFiles(event) {
-    setError("");
-    try { setSelectedFiles(current => [...current, ...validateFiles([...event.target.files])]); }
-    catch (fileError) { setError(fileError.message); }
-    event.target.value = "";
+    const files = Array.from(event.currentTarget.files || []);
+    event.currentTarget.value = "";
+    setFileError("");
+    if (!files.length) return;
+    try {
+      const accepted = validateFiles(files);
+      setSelectedFiles(current => [...current, ...accepted]);
+    } catch (fileSelectionError) {
+      setFileError(fileSelectionError.message);
+    }
   }
 
   async function uploadOne(postId, file, key = `${file.name}-${file.lastModified}`) {
@@ -551,7 +570,7 @@ function PostsPage({ profile, onBack }) {
 
   return <><main className="posts-page"><section className="posts-head"><div><button className="text-button back-button" onClick={onBack}>← Retour au tableau de bord</button><span className="pill">Base de connaissances</span><h1>Espace administratif</h1><p>Tutoriels, procédures, modèles et informations utiles.</p></div><button className="primary" onClick={()=>{if(showForm)cancelForm();else{setEditing(null);setForm(blank);setShowForm(true)}}}><Plus size={18}/>{isAdmin?" Nouvelle publication":" Proposer un tutoriel"}</button></section>
   {notice&&<p className="calendar-notice">{notice}</p>}{error&&<p className="form-error calendar-error">{error}</p>}
-  {showForm&&<section className="post-form-card"><h2>{editing?"Modifier la publication":isAdmin?"Créer une publication":"Proposer un tutoriel"}</h2><form className="post-form" onSubmit={savePost}><label>Titre<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label><label>Catégorie<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{Object.entries(categories).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label className="post-content-field">Contenu<textarea required rows="9" value={form.content} onChange={e=>setForm({...form,content:e.target.value})}/></label><label>Lien externe facultatif<input type="url" placeholder="https://..." value={form.external_url} onChange={e=>setForm({...form,external_url:e.target.value})}/></label><label className="check-label"><input type="checkbox" checked={form.comments_enabled} onChange={e=>setForm({...form,comments_enabled:e.target.checked})}/> Autoriser les commentaires</label>{isAdmin&&<><label className="check-label"><input type="checkbox" checked={form.pinned} onChange={e=>setForm({...form,pinned:e.target.checked})}/> Épingler la publication</label><div className="attachment-picker"><label className="attachment-pick-button"><Paperclip size={18}/>Ajouter des fichiers<input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={chooseFiles}/></label><small>10 fichiers maximum. Images : 5 Mo. Documents : 10 Mo.</small>{selectedFiles.map((file,index)=>{const state=uploadStates[`${file.name}-${file.lastModified}`];return <div className="queued-file" key={`${file.name}-${file.lastModified}-${index}`}><FileText size={18}/><span>{file.name}<small>{formatFileSize(file.size)}</small></span>{state?.status==="upload"?<progress value={state.progress} max="100"/>:state?.status==="done"?<strong>Envoyé</strong>:state?.status==="error"?<strong className="upload-error">Échec</strong>:<button type="button" onClick={()=>setSelectedFiles(files=>files.filter((_,i)=>i!==index))}>Retirer</button>}</div>})}</div></>}<div className="form-actions"><button type="button" className="logout-button" onClick={cancelForm}>Annuler</button><button className="primary" disabled={busy||attachmentsBusy}>{busy?(attachmentsBusy?"Envoi des fichiers…":"Enregistrement…"):editing?"Enregistrer les modifications":isAdmin?"Publier":"Envoyer pour validation"}</button></div></form></section>}
+  {showForm&&<section className="post-form-card"><h2>{editing?"Modifier la publication":isAdmin?"Créer une publication":"Proposer un tutoriel"}</h2><form className="post-form" onSubmit={savePost}><label>Titre<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label><label>Catégorie<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{Object.entries(categories).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label className="post-content-field">Contenu<textarea required rows="9" value={form.content} onChange={e=>setForm({...form,content:e.target.value})}/></label><label>Lien externe facultatif<input type="url" placeholder="https://..." value={form.external_url} onChange={e=>setForm({...form,external_url:e.target.value})}/></label><label className="check-label"><input type="checkbox" checked={form.comments_enabled} onChange={e=>setForm({...form,comments_enabled:e.target.checked})}/> Autoriser les commentaires</label>{isAdmin&&<><label className="check-label"><input type="checkbox" checked={form.pinned} onChange={e=>setForm({...form,pinned:e.target.checked})}/> Épingler la publication</label><div className="attachment-picker"><label className="attachment-input-label"><Paperclip size={18}/>Ajouter des fichiers</label><input className="attachment-native-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={chooseFiles}/><small>10 fichiers maximum. Images : 5 Mo. Documents : 10 Mo.</small>{fileError&&<p className="attachment-file-error" role="alert">{fileError}</p>}{selectedFiles.length>0&&<p className="attachment-selection-count">{selectedFiles.length} fichier{selectedFiles.length>1?"s":""} sélectionné{selectedFiles.length>1?"s":""}</p>}{selectedFiles.map((file,index)=>{const state=uploadStates[`${file.name}-${file.lastModified}`];return <div className="queued-file" key={`${file.name}-${file.lastModified}-${index}`}><FileText size={18}/><span>{file.name}<small>{formatFileSize(file.size)}</small></span>{state?.status==="upload"?<progress value={state.progress} max="100"/>:state?.status==="done"?<strong>Envoyé</strong>:state?.status==="error"?<strong className="upload-error">Échec</strong>:<button type="button" onClick={()=>setSelectedFiles(files=>files.filter((_,i)=>i!==index))}>Retirer</button>}</div>})}</div></>}<div className="form-actions"><button type="button" className="logout-button" onClick={cancelForm}>Annuler</button><button className="primary" disabled={busy||attachmentsBusy}>{busy?(attachmentsBusy?"Envoi des fichiers…":"Enregistrement…"):editing?"Enregistrer les modifications":isAdmin?"Publier":"Envoyer pour validation"}</button></div></form></section>}
   <section className="posts-toolbar"><div className="search-box"><Search size={18}/><input placeholder="Rechercher..." value={query} onChange={e=>setQuery(e.target.value)}/></div><select value={category} onChange={e=>setCategory(e.target.value)}><option value="toutes">Toutes les catégories</option>{Object.entries(categories).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></section>
   {loadingPosts?<div className="calendar-loading"><LoaderCircle className="spin"/> Chargement…</div>:!visible.length?<div className="empty-calendar"><BookOpen/><h2>Aucune publication</h2><p>Créez la première publication de l’ASBL.</p></div>:<section className="posts-grid">{visible.map(post=><article className="post-card" key={post.id} onClick={()=>openPost(post)}>{post.pinned&&<Pin className="post-pin" size={18}/>} {post.status==="publie"&&post.comments_enabled&&<span className="comment-count"><MessageCircle size={15}/>{commentCounts[post.id]||0}</span>}<span className={`post-status post-status-${post.status}`}>{post.status==="publie"?"Publié":post.status==="en_attente"?"En attente":post.status}</span><small>{categories[post.category]}</small><h2>{post.title}</h2><p>{post.content}</p><footer><span>{authors[post.author_id]||"Auteur"}</span><span>{new Date(post.published_at||post.created_at).toLocaleDateString("fr-BE")}</span></footer></article>)}</section>}
   {selected&&<div className="post-modal-backdrop" onClick={()=>setSelected(null)}><article className="post-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setSelected(null)}>×</button><span className="post-status">{categories[selected.category]}</span><h1>{selected.title}</h1><p className="post-by">Par {authors[selected.author_id]||"Auteur"} · {new Date(selected.published_at||selected.created_at).toLocaleDateString("fr-BE")}</p><div className="post-full-content">{selected.content}</div>{selected.external_url&&<a className="external-post-link" href={selected.external_url} target="_blank" rel="noreferrer"><ExternalLink size={17}/>Ouvrir le lien associé</a>}
