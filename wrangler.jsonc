@@ -8,6 +8,10 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+"vars": {
+  "ALLOWED_ORIGIN": "https://patro-vieux-site.asblpatrovieux.workers.dev",
+  "NEON_STORAGE_BUCKET": "documents"
+},
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
