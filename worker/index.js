@@ -36,15 +36,25 @@ function json(data, status = 200, origin = "") {
   return new Response(JSON.stringify(data), { status, headers });
 }
 
-function getAllowedOrigin(request, env) {
-  const origin = request.headers.get("Origin") || "";
-  if (!origin) return env.ALLOWED_ORIGIN;
-  return origin === env.ALLOWED_ORIGIN ? origin : "";
+function normalizeOrigin(value = "") {
+  return value.trim().replace(/\/$/, "");
 }
 
-function requireSameOrigin(request, env) {
-  const origin = request.headers.get("Origin");
-  return !origin || origin === env.ALLOWED_ORIGIN;
+function isAllowedOrigin(request, env) {
+  const origin = normalizeOrigin(request.headers.get("Origin") || "");
+  if (!origin) return true;
+
+  const requestOrigin = normalizeOrigin(new URL(request.url).origin);
+  const configuredOrigin = normalizeOrigin(env.ALLOWED_ORIGIN || "");
+  const isLocalDevelopment = origin === "http://localhost:5173";
+
+  return origin === requestOrigin || origin === configuredOrigin || isLocalDevelopment;
+}
+
+function getAllowedOrigin(request, env) {
+  const origin = normalizeOrigin(request.headers.get("Origin") || "");
+  if (origin && isAllowedOrigin(request, env)) return origin;
+  return normalizeOrigin(new URL(request.url).origin);
 }
 
 function getBearer(request) {
@@ -328,7 +338,7 @@ class HttpError extends Error {
 
 async function handleApi(request, env) {
   const origin = getAllowedOrigin(request, env);
-  if (!requireSameOrigin(request, env)) return json({ error: "Origine non autorisée." }, 403);
+  if (!isAllowedOrigin(request, env)) return json({ error: "Origine non autorisée." }, 403);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
