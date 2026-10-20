@@ -316,17 +316,9 @@ function RegisterPage({ onBack, onLogin }) {
         return;
       }
 
-      const {error:otpError}=await withTimeout(neonPasswordAuth.auth.emailOtp.sendVerificationOtp({
-        email,
-        type:"email-verification",
-      }));
-      if(otpError){
-        setForm(current=>({...current,email,password:"",password_confirmation:""}));
-        setStep("verify");
-        setError("Le compte est créé, mais le code n’a pas pu être envoyé automatiquement. Cliquez sur « Renvoyer le code ».");
-        return;
-      }
-
+      // Verify at Sign-up est activé dans Neon : signUp.email() envoie déjà
+      // le premier code. Le bouton « Renvoyer le code » reste disponible
+      // uniquement si l'utilisateur en demande un nouveau.
       setForm(current=>({...current,email,password:"",password_confirmation:""}));
       setStep("verify");
       setNotice("Un code de vérification a été envoyé par e-mail.");
