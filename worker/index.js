@@ -354,6 +354,171 @@ async function deleteAttachment(request, env) {
   return { deleted: true };
 }
 
+const TREASURY_ALLOWED_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
+const TREASURY_MAX_BYTES = 10 * 1024 * 1024;
+
+function assertTreasuryFileMetadata({ original_name, mime_type, size_bytes }) {
+  if (typeof original_name !== "string" || !original_name.trim() || original_name.length > 255 || /[/\\]|\.\./.test(original_name)) {
+    throw new HttpError(400, "Nom de justificatif invalide.");
+  }
+  if (!TREASURY_ALLOWED_TYPES.has(mime_type)) {
+    throw new HttpError(415, "Seuls les fichiers PDF, JPEG et PNG sont autorisés.");
+  }
+  if (!Number.isSafeInteger(size_bytes) || size_bytes <= 0) {
+    throw new HttpError(400, "Taille de justificatif invalide.");
+  }
+  if (size_bytes > TREASURY_MAX_BYTES) {
+    throw new HttpError(413, "Le justificatif dépasse la limite de 10 Mo.");
+  }
+}
+
+async function requireTreasuryTransaction(env, token, transactionId) {
+  assertUuid(transactionId, "Opération de trésorerie");
+  const transactionResponse = await dataApi(
+    env,
+    token,
+    `/treasury_transactions?id=eq.${encodeURIComponent(transactionId)}&select=id,period_id,status&limit=1`,
+  );
+  if (!transactionResponse.ok) throw new HttpError(403, "Accès à l’opération de trésorerie refusé.");
+  const transaction = (await transactionResponse.json())?.[0];
+  if (!transaction) throw new HttpError(404, "Opération de trésorerie introuvable.");
+
+  const periodResponse = await dataApi(
+    env,
+    token,
+    `/treasury_periods?id=eq.${encodeURIComponent(transaction.period_id)}&select=id,label,is_closed&limit=1`,
+  );
+  if (!periodResponse.ok) throw new HttpError(403, "Accès à l’exercice comptable refusé.");
+  const period = (await periodResponse.json())?.[0];
+  if (!period) throw new HttpError(404, "Exercice comptable introuvable.");
+  if (period.is_closed) throw new HttpError(409, "Cet exercice comptable est clôturé.");
+  return { transaction, period };
+}
+
+async function requireTreasuryAttachment(env, token, attachmentId) {
+  assertUuid(attachmentId, "Justificatif");
+  const response = await dataApi(
+    env,
+    token,
+    `/treasury_attachments?id=eq.${encodeURIComponent(attachmentId)}&select=id,transaction_id,storage_key,original_name,display_name,mime_type,size_bytes&limit=1`,
+  );
+  if (!response.ok) throw new HttpError(403, "Accès au justificatif refusé.");
+  const attachment = (await response.json())?.[0];
+  if (!attachment) throw new HttpError(404, "Justificatif introuvable.");
+  return attachment;
+}
+
+async function createTreasuryUploadUrl(request, env) {
+  const { token, userId } = await requireProfile(request, env, { admin: true });
+  const body = await request.json();
+  const transactionId = body.transaction_id;
+  assertTreasuryFileMetadata(body);
+  const { period } = await requireTreasuryTransaction(env, token, transactionId);
+
+  const safeName = sanitizeFilename(body.original_name);
+  const storageKey = `treasury/${period.label}/${transactionId}/${crypto.randomUUID()}-${safeName}`;
+  const command = new PutObjectCommand({
+    Bucket: env.NEON_STORAGE_BUCKET,
+    Key: storageKey,
+    ContentType: body.mime_type,
+    ContentLength: body.size_bytes,
+    Metadata: { "uploaded-by": userId, "transaction-id": transactionId, "period-label": period.label },
+  });
+  return {
+    upload_url: await getSignedUrl(s3Client(env), command, { expiresIn: PRESIGN_SECONDS }),
+    method: "PUT",
+    headers: { "Content-Type": body.mime_type },
+    storage_key: storageKey,
+    expires_in: PRESIGN_SECONDS,
+  };
+}
+
+async function completeTreasuryUpload(request, env) {
+  const { token } = await requireProfile(request, env, { admin: true });
+  const body = await request.json();
+  assertUuid(body.transaction_id, "Opération de trésorerie");
+  assertTreasuryFileMetadata(body);
+  const { period } = await requireTreasuryTransaction(env, token, body.transaction_id);
+  const expectedPrefix = `treasury/${period.label}/${body.transaction_id}/`;
+  if (typeof body.storage_key !== "string" || !body.storage_key.startsWith(expectedPrefix) || body.storage_key.includes("..")) {
+    throw new HttpError(400, "Clé de stockage du justificatif invalide.");
+  }
+
+  let object;
+  try {
+    object = await headObjectWithRetry(env, body.storage_key);
+  } catch {
+    throw new HttpError(409, "Le justificatif envoyé n’a pas été trouvé dans le stockage après plusieurs vérifications.");
+  }
+  if (Number(object.ContentLength) !== body.size_bytes || object.ContentType !== body.mime_type) {
+    throw new HttpError(409, "Le justificatif ne correspond pas aux métadonnées annoncées.");
+  }
+
+  const rpcResponse = await dataApi(env, token, "/rpc/complete_treasury_attachment", {
+    method: "POST",
+    body: JSON.stringify({
+      p_transaction_id: body.transaction_id,
+      p_storage_key: body.storage_key,
+      p_original_name: body.original_name,
+      p_display_name: body.display_name?.trim() || null,
+      p_mime_type: body.mime_type,
+      p_size_bytes: body.size_bytes,
+      p_document_number: body.document_number?.trim() || null,
+      p_document_date: body.document_date || null,
+      p_issuer: body.issuer?.trim() || null,
+    }),
+  });
+  if (!rpcResponse.ok) {
+    const details = await rpcResponse.text();
+    await s3Client(env).send(new DeleteObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: body.storage_key })).catch(() => {});
+    throw new HttpError(400, "Métadonnées du justificatif refusées par la base de données.", details);
+  }
+  return { attachment: await rpcResponse.json() };
+}
+
+async function createTreasuryDownloadUrl(request, env, routeAttachmentId = "") {
+  const { token } = await requireProfile(request, env, { admin: true });
+  let attachmentId = routeAttachmentId;
+  if (!attachmentId && request.method !== "GET") {
+    const body = await request.json();
+    attachmentId = body.attachment_id;
+  }
+  const attachment = await requireTreasuryAttachment(env, token, attachmentId);
+  const filename = attachment.display_name || attachment.original_name;
+  const command = new GetObjectCommand({
+    Bucket: env.NEON_STORAGE_BUCKET,
+    Key: attachment.storage_key,
+    ResponseContentType: attachment.mime_type,
+    ResponseContentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+  });
+  return {
+    download_url: await getSignedUrl(s3Client(env), command, { expiresIn: PRESIGN_SECONDS }),
+    expires_in: PRESIGN_SECONDS,
+  };
+}
+
+async function deleteTreasuryAttachment(request, env) {
+  const { token } = await requireProfile(request, env, { admin: true });
+  const attachmentId = new URL(request.url).searchParams.get("id");
+  const attachment = await requireTreasuryAttachment(env, token, attachmentId);
+
+  try {
+    await s3Client(env).send(new DeleteObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: attachment.storage_key }));
+  } catch {
+    throw new HttpError(500, "Le justificatif n’a pas pu être supprimé du stockage.");
+  }
+
+  const rpcResponse = await dataApi(env, token, "/rpc/delete_treasury_attachment_metadata", {
+    method: "POST",
+    body: JSON.stringify({ p_attachment_id: attachmentId }),
+  });
+  if (!rpcResponse.ok) {
+    const details = await rpcResponse.text();
+    throw new HttpError(500, "Fichier supprimé, mais nettoyage des métadonnées à relancer.", details);
+  }
+  return { deleted: true };
+}
+
 class HttpError extends Error {
   constructor(status, message, details = "") {
     super(message);
@@ -382,6 +547,11 @@ async function handleApi(request, env) {
     else if (path === "/api/attachments/replace-complete" && request.method === "POST") result = await completeReplacement(request, env);
     else if (path === "/api/attachments/download-url" && request.method === "POST") result = await createDownloadUrl(request, env);
     else if (path === "/api/attachments" && request.method === "DELETE") result = await deleteAttachment(request, env);
+    else if (path === "/api/treasury/attachments/upload-url" && request.method === "POST") result = await createTreasuryUploadUrl(request, env);
+    else if (path === "/api/treasury/attachments/complete" && request.method === "POST") result = await completeTreasuryUpload(request, env);
+    else if (path === "/api/treasury/attachments/download-url" && request.method === "POST") result = await createTreasuryDownloadUrl(request, env);
+    else if (/^\/api\/treasury\/attachments\/[0-9a-f-]+\/download$/i.test(path) && request.method === "GET") result = await createTreasuryDownloadUrl(request, env, path.split("/")[4]);
+    else if (path === "/api/treasury/attachments" && request.method === "DELETE") result = await deleteTreasuryAttachment(request, env);
     else return json({ error: "Route API introuvable." }, 404, origin);
     return json(result, 200, origin);
   } catch (error) {
