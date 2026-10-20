@@ -138,3 +138,7 @@
 
 /* Compte principal ASBL protégé */
 .protected-user-row{border:2px solid #b58a2a;background:linear-gradient(135deg,#fffdf5,#ffffff);box-shadow:0 8px 24px #7c5b1514}.protected-account-badge{display:inline-flex;align-items:center;gap:6px;width:max-content;margin-top:9px;padding:6px 9px;border-radius:999px;background:#fef3c7;color:#854d0e;font-size:.78rem;font-weight:900}.protected-lock{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;background:#f1f5f9;color:#334155;font-size:.82rem;font-weight:900}.protected-user-row .role-select select:disabled{opacity:1;color:#854d0e;background:#fffbeb;border-color:#d6b558;cursor:not-allowed}
+
+
+/* Vérification e-mail par code */
+.otp-input{text-align:center;font-size:1.5rem!important;font-weight:900;letter-spacing:.35em;font-variant-numeric:tabular-nums}.auth-card .text-button:disabled{opacity:.55;cursor:not-allowed}

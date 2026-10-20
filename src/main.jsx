@@ -289,24 +289,37 @@ function ResetPasswordPage({ token, onDone }) {
 }
 
 function RegisterPage({ onBack, onLogin }) {
-  const [form,setForm]=useState({first_name:"",last_name:"",email:"",password:""});
-  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[sent,setSent]=useState(false);
+  const [form,setForm]=useState({first_name:"",last_name:"",email:"",password:"",password_confirmation:""});
+  const [step,setStep]=useState("register"),[otp,setOtp]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
   async function submit(e){
-    e.preventDefault(); setBusy(true); setError("");
+    e.preventDefault();setBusy(true);setError("");setNotice("");
     if(form.password.length<8){setError("Le mot de passe doit contenir au moins 8 caractères.");setBusy(false);return}
-    const {error:signupError}=await neon.auth.signUp({
-      email:form.email,password:form.password,
-      options:{
-        data:{first_name:form.first_name.trim(),last_name:form.last_name.trim()},
-        emailRedirectTo:window.location.origin
-      }
-    });
+    if(form.password!==form.password_confirmation){setError("Les deux mots de passe ne correspondent pas.");setBusy(false);return}
+    const email=form.email.trim().toLowerCase();
+    const {error:signupError}=await neon.auth.signUp({email,password:form.password,options:{data:{first_name:form.first_name.trim(),last_name:form.last_name.trim()}}});
     if(signupError)setError(signupError.message.includes("already registered")?"Cette adresse e-mail est déjà utilisée.":signupError.message);
-    else setSent(true);
+    else{setForm(current=>({...current,email,password:"",password_confirmation:""}));setStep("verify");setNotice("Un code de vérification a été envoyé par e-mail.")}
     setBusy(false);
   }
-  if(sent)return <main className="auth-page"><section className="auth-card"><div className="auth-icon"><Mail/></div><h1>Vérifiez votre e-mail</h1><p>Un e-mail de confirmation a été envoyé à <strong>{form.email}</strong>.</p><p>Après confirmation, votre compte restera en attente jusqu’à sa validation par un administrateur.</p><button className="primary auth-submit" onClick={onLogin}>Retour à la connexion</button></section></main>;
-  return <main className="auth-page"><section className="auth-card register-card"><div className="auth-icon"><Users/></div><h1>Demander un accès</h1><p>Créez votre compte. Un administrateur devra ensuite valider votre inscription.</p><form onSubmit={submit} className="auth-form"><div className="register-names"><label>Prénom<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label><label>Nom<input required value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/></label></div><label>Adresse e-mail<input required type="email" autoComplete="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Mot de passe<input required type="password" minLength="8" autoComplete="new-password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label><small>Au moins 8 caractères. N’utilisez pas un mot de passe déjà employé ailleurs.</small>{error&&<p className="form-error">{error}</p>}<button className="primary auth-submit" disabled={busy}>{busy?"Création…":"Créer mon compte"}</button></form><button className="text-button" onClick={onLogin}>J’ai déjà un compte</button><button className="text-button secondary-back" onClick={onBack}>Retour au site public</button></section></main>;
+  async function verifyCode(e){
+    e.preventDefault();setBusy(true);setError("");setNotice("");
+    const code=otp.replace(/\s/g,"");
+    if(!/^\d{6}$/.test(code)){setError("Saisissez le code à 6 chiffres reçu par e-mail.");setBusy(false);return}
+    const {error:verifyError}=await neon.auth.emailOtp.verifyEmail({email:form.email,otp:code});
+    if(verifyError)setError("Code invalide ou expiré. Vérifiez le code ou demandez-en un nouveau.");
+    else{setOtp("");setStep("done")}
+    setBusy(false);
+  }
+  async function resendCode(){
+    setBusy(true);setError("");setNotice("");
+    const {error:resendError}=await neon.auth.emailOtp.sendVerificationOtp({email:form.email,type:"email-verification"});
+    if(resendError)setError("Impossible de renvoyer le code pour le moment. Réessayez dans quelques instants.");
+    else setNotice("Un nouveau code de vérification a été envoyé.");
+    setBusy(false);
+  }
+  if(step==="done")return <main className="auth-page"><section className="auth-card"><div className="auth-icon"><ShieldCheck/></div><h1>Adresse e-mail vérifiée</h1><p>Votre adresse <strong>{form.email}</strong> est confirmée.</p><p>Votre compte reste en attente jusqu’à sa validation par un administrateur.</p><button className="primary auth-submit" onClick={onLogin}>Retour à la connexion</button></section></main>;
+  if(step==="verify")return <main className="auth-page"><section className="auth-card"><div className="auth-icon"><Mail/></div><h1>Vérifiez votre e-mail</h1><p>Un code à 6 chiffres a été envoyé à <strong>{form.email}</strong>.</p><form className="auth-form" onSubmit={verifyCode}><label>Code de vérification<input className="otp-input" required inputMode="numeric" autoComplete="one-time-code" maxLength="6" pattern="[0-9]{6}" placeholder="000000" value={otp} onChange={e=>setOtp(e.target.value.replace(/\D/g,"").slice(0,6))}/></label>{notice&&<p className="calendar-notice">{notice}</p>}{error&&<p className="form-error" role="alert">{error}</p>}<button className="primary auth-submit" disabled={busy||otp.length!==6}>{busy?"Vérification…":"Vérifier mon adresse"}</button></form><button className="text-button" type="button" disabled={busy} onClick={resendCode}>Renvoyer le code</button><button className="text-button secondary-back" type="button" disabled={busy} onClick={()=>{setStep("register");setOtp("");setError("");setNotice("")}}>Modifier mon adresse e-mail</button></section></main>;
+  return <main className="auth-page"><section className="auth-card register-card"><div className="auth-icon"><Users/></div><h1>Demander un accès</h1><p>Créez votre compte puis confirmez votre adresse e-mail. Un administrateur devra ensuite valider votre inscription.</p><form onSubmit={submit} className="auth-form"><div className="register-names"><label>Prénom<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label><label>Nom<input required value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/></label></div><label>Adresse e-mail<input required type="email" autoComplete="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Mot de passe<input required type="password" minLength="8" autoComplete="new-password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label><label>Confirmer le mot de passe<input required type="password" minLength="8" autoComplete="new-password" value={form.password_confirmation} onChange={e=>setForm({...form,password_confirmation:e.target.value})}/></label><small>Au moins 8 caractères. Les deux mots de passe doivent être identiques.</small>{error&&<p className="form-error" role="alert">{error}</p>}<button className="primary auth-submit" disabled={busy}>{busy?"Création…":"Créer mon compte"}</button></form><button className="text-button" onClick={onLogin}>J’ai déjà un compte</button><button className="text-button secondary-back" onClick={onBack}>Retour au site public</button></section></main>;
 }
 
 function PendingAccount({ profile, onLogout }) {
