@@ -296,7 +296,13 @@ function RegisterPage({ onBack, onLogin }) {
     if(form.password.length<8){setError("Le mot de passe doit contenir au moins 8 caractères.");setBusy(false);return}
     if(form.password!==form.password_confirmation){setError("Les deux mots de passe ne correspondent pas.");setBusy(false);return}
     const email=form.email.trim().toLowerCase();
-    const {error:signupError}=await neon.auth.signUp({email,password:form.password,options:{data:{first_name:form.first_name.trim(),last_name:form.last_name.trim()}}});
+    const {error:signupError}=await neonPasswordAuth.auth.signUp.email({
+      email,
+      password:form.password,
+      name:`${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
+      first_name:form.first_name.trim(),
+      last_name:form.last_name.trim(),
+    });
     if(signupError)setError(signupError.message.includes("already registered")?"Cette adresse e-mail est déjà utilisée.":signupError.message);
     else{setForm(current=>({...current,email,password:"",password_confirmation:""}));setStep("verify");setNotice("Un code de vérification a été envoyé par e-mail.")}
     setBusy(false);
@@ -305,14 +311,14 @@ function RegisterPage({ onBack, onLogin }) {
     e.preventDefault();setBusy(true);setError("");setNotice("");
     const code=otp.replace(/\s/g,"");
     if(!/^\d{6}$/.test(code)){setError("Saisissez le code à 6 chiffres reçu par e-mail.");setBusy(false);return}
-    const {error:verifyError}=await neon.auth.emailOtp.verifyEmail({email:form.email,otp:code});
+    const {error:verifyError}=await neonPasswordAuth.auth.emailOtp.verifyEmail({email:form.email,otp:code});
     if(verifyError)setError("Code invalide ou expiré. Vérifiez le code ou demandez-en un nouveau.");
     else{setOtp("");setStep("done")}
     setBusy(false);
   }
   async function resendCode(){
     setBusy(true);setError("");setNotice("");
-    const {error:resendError}=await neon.auth.emailOtp.sendVerificationOtp({email:form.email,type:"email-verification"});
+    const {error:resendError}=await neonPasswordAuth.auth.emailOtp.sendVerificationOtp({email:form.email,type:"email-verification"});
     if(resendError)setError("Impossible de renvoyer le code pour le moment. Réessayez dans quelques instants.");
     else setNotice("Un nouveau code de vérification a été envoyé.");
     setBusy(false);
