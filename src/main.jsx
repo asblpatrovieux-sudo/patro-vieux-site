@@ -298,21 +298,45 @@ function RegisterPage({ onBack, onLogin }) {
     ]);
   }
   async function submit(e){
-    e.preventDefault();setBusy(true);setError("");setNotice("");
-    if(form.password.length<8){setError("Le mot de passe doit contenir au moins 8 caractères.");setBusy(false);return}
-    if(form.password!==form.password_confirmation){setError("Les deux mots de passe ne correspondent pas.");setBusy(false);return}
+    e.preventDefault();setError("");setNotice("");
+    if(form.password.length<8){setError("Le mot de passe doit contenir au moins 8 caractères.");return}
+    if(form.password!==form.password_confirmation){setError("Les deux mots de passe ne correspondent pas.");return}
     const email=form.email.trim().toLowerCase();
-    const {error:signupError}=await neonPasswordAuth.auth.signUp.email({
-      email,
-      password:form.password,
-      name:`${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
-      first_name:form.first_name.trim(),
-      last_name:form.last_name.trim(),
-    });
-    if(signupError)setError(signupError.message.includes("already registered")?"Cette adresse e-mail est déjà utilisée.":signupError.message);
-    else{setForm(current=>({...current,email,password:"",password_confirmation:""}));setStep("verify");setNotice("Un code de vérification a été envoyé par e-mail.")}
-    setBusy(false);
+    setBusy(true);
+    try{
+      const {error:signupError}=await withTimeout(neonPasswordAuth.auth.signUp.email({
+        email,
+        password:form.password,
+        name:`${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
+        first_name:form.first_name.trim(),
+        last_name:form.last_name.trim(),
+      }));
+      if(signupError){
+        setError(signupError.message.includes("already registered")?"Cette adresse e-mail est déjà utilisée.":signupError.message);
+        return;
+      }
+
+      const {error:otpError}=await withTimeout(neonPasswordAuth.auth.emailOtp.sendVerificationOtp({
+        email,
+        type:"email-verification",
+      }));
+      if(otpError){
+        setForm(current=>({...current,email,password:"",password_confirmation:""}));
+        setStep("verify");
+        setError("Le compte est créé, mais le code n’a pas pu être envoyé automatiquement. Cliquez sur « Renvoyer le code ».");
+        return;
+      }
+
+      setForm(current=>({...current,email,password:"",password_confirmation:""}));
+      setStep("verify");
+      setNotice("Un code de vérification a été envoyé par e-mail.");
+    }catch(signupException){
+      setError(signupException?.message==="timeout"?"La création du compte prend trop de temps. Réessayez dans quelques instants.":"Impossible de créer le compte pour le moment. Réessayez.");
+    }finally{
+      setBusy(false);
+    }
   }
+
   async function verifyCode(e){
     e.preventDefault();
     const code=otp.replace(/\s/g,"");
