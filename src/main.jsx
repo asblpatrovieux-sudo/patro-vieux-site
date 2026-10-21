@@ -438,17 +438,42 @@ function TreasuryPage({ profile, onBack }) {
   useEffect(()=>{(async()=>{try{const id=await loadPeriods();if(id)await loadTreasury(id);else setLoading(false)}catch(loadError){setError("Impossible de charger la trésorerie : "+loadError.message);setLoading(false)}})()},[]);
   useEffect(()=>{if(periodId&&!loading)loadTreasury(periodId).catch(loadError=>{setError("Impossible de charger la trésorerie : "+loadError.message);setLoading(false)})},[periodId]);
 
-  async function loadCategories(){
-    const [officialResult,subResult]=await Promise.all([
-      neon.from("treasury_official_categories").select("id,kind,name,display_order,is_active").eq("is_active",true).order("display_order"),
-      neon.from("treasury_subcategories").select("id,official_category_id,name,display_order,is_active").eq("is_active",true).order("display_order"),
-    ]);
-    if(officialResult.error)throw officialResult.error;if(subResult.error)throw subResult.error;
-    setCategories(officialResult.data||[]);setSubcategories(subResult.data||[]);
+  async function waitForAuthenticatedSession(){
+    for(let attempt=0;attempt<8;attempt+=1){
+      const {data}=await neon.auth.getSession();
+      if(data?.session?.access_token)return data.session;
+      await new Promise(resolve=>setTimeout(resolve,200));
+    }
+    throw new Error("Session authentifiée indisponible. Reconnectez-vous.");
   }
-  useEffect(()=>{if(isAdmin)loadCategories().catch(loadError=>setError("Impossible de charger les catégories : "+loadError.message))},[]);
-  function openDraftForm(operation=null){
-    setError("");setNotice("");setEditing(operation);setFormOpen(true);
+  async function loadCategories(){
+    await waitForAuthenticatedSession();
+    let lastError=null;
+    for(let attempt=0;attempt<2;attempt+=1){
+      const [officialResult,subResult]=await Promise.all([
+        neon.from("treasury_official_categories").select("id,kind,name,display_order,is_active").eq("is_active",true).order("display_order"),
+        neon.from("treasury_subcategories").select("id,official_category_id,name,display_order,is_active").eq("is_active",true).order("display_order"),
+      ]);
+      lastError=officialResult.error||subResult.error;
+      if(!lastError){
+        setCategories(officialResult.data||[]);
+        setSubcategories(subResult.data||[]);
+        return;
+      }
+      const authMissing=/missing authentication credentials|authorization bearer token|jwt/i.test(lastError.message||"");
+      if(!authMissing||attempt===1)throw lastError;
+      await new Promise(resolve=>setTimeout(resolve,350));
+      await waitForAuthenticatedSession();
+    }
+    throw lastError||new Error("Chargement des catégories impossible.");
+  }
+  useEffect(()=>{if(isAdmin)loadCategories().catch(loadError=>setError("Impossible de charger les catégories : "+loadError.message))},[isAdmin]);
+  async function openDraftForm(operation=null){
+    setError("");setNotice("");
+    if(!categories.length){
+      try{await loadCategories()}catch(loadError){setError("Impossible de charger les catégories : "+loadError.message);return}
+    }
+    setEditing(operation);setFormOpen(true);
     const transactionType=operation?.transaction_type||"depense";
     const firstCategory=categories.find(category=>category.kind===transactionType);
     setDraft(operation?{
