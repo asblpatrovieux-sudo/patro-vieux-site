@@ -438,51 +438,27 @@ function TreasuryPage({ profile, onBack }) {
   useEffect(()=>{(async()=>{try{const id=await loadPeriods();if(id)await loadTreasury(id);else setLoading(false)}catch(loadError){setError("Impossible de charger la trésorerie : "+loadError.message);setLoading(false)}})()},[]);
   useEffect(()=>{if(periodId&&!loading)loadTreasury(periodId).catch(loadError=>{setError("Impossible de charger la trésorerie : "+loadError.message);setLoading(false)})},[periodId]);
 
-  async function waitForAuthenticatedSession(){
-    for(let attempt=0;attempt<8;attempt+=1){
-      const {data}=await neon.auth.getSession();
-      if(data?.session?.access_token)return data.session;
-      await new Promise(resolve=>setTimeout(resolve,200));
-    }
-    throw new Error("Session authentifiée indisponible. Reconnectez-vous.");
-  }
   async function loadCategories(){
-    await waitForAuthenticatedSession();
-    let lastError=null;
-    for(let attempt=0;attempt<2;attempt+=1){
-      const [officialResult,subResult]=await Promise.all([
-        neon.from("treasury_official_categories").select("id,kind,name,display_order,is_active").eq("is_active",true).order("display_order"),
-        neon.from("treasury_subcategories").select("id,official_category_id,name,display_order,is_active").eq("is_active",true).order("display_order"),
-      ]);
-      lastError=officialResult.error||subResult.error;
-      if(!lastError){
-        setCategories(officialResult.data||[]);
-        setSubcategories(subResult.data||[]);
-        return;
-      }
-      const authMissing=/missing authentication credentials|authorization bearer token|jwt/i.test(lastError.message||"");
-      if(!authMissing||attempt===1)throw lastError;
-      await new Promise(resolve=>setTimeout(resolve,350));
-      await waitForAuthenticatedSession();
-    }
-    throw lastError||new Error("Chargement des catégories impossible.");
+    const [officialResult,subResult]=await Promise.all([
+      neon.from("treasury_official_categories").select("id,kind,name,display_order,is_active").eq("is_active",true).order("display_order"),
+      neon.from("treasury_subcategories").select("id,official_category_id,name,display_order,is_active").eq("is_active",true).order("display_order"),
+    ]);
+    if(officialResult.error)throw officialResult.error;if(subResult.error)throw subResult.error;
+    setCategories(officialResult.data||[]);setSubcategories(subResult.data||[]);
   }
-  useEffect(()=>{if(isAdmin)loadCategories().catch(loadError=>setError("Impossible de charger les catégories : "+loadError.message))},[isAdmin]);
-  async function openDraftForm(operation=null){
-    setError("");setNotice("");
-    if(!categories.length){
-      try{await loadCategories()}catch(loadError){setError("Impossible de charger les catégories : "+loadError.message);return}
-    }
-    setEditing(operation);setFormOpen(true);
+  useEffect(()=>{if(isAdmin)loadCategories().catch(loadError=>setError("Impossible de charger les catégories : "+loadError.message))},[]);
+  function openDraftForm(operation=null){
+    setError("");setNotice("");setEditing(operation);setFormOpen(true);
     const transactionType=operation?.transaction_type||"depense";
     const firstCategory=categories.find(category=>category.kind===transactionType);
     setDraft(operation?{
       transaction_type:operation.transaction_type,account_type:operation.account_type,official_category_id:operation.official_category_id||"",subcategory_id:operation.subcategory_id||"",amount:String(operation.amount||""),description:operation.description||"",counterparty:operation.counterparty||"",operation_date:operation.operation_date||"",payment_date:operation.payment_date||"",invoice_date:operation.invoice_date||"",invoice_number:operation.invoice_number||"",bank_reference:operation.bank_reference||"",internal_notes:""
-    }:{...emptyDraft,official_category_id:firstCategory?.id||"",operation_date:selectedPeriod?.start_date||"",payment_date:selectedPeriod?.start_date||""});
+    }:{...emptyDraft,official_category_id:firstCategory?.id||"",subcategory_id:subcategories.find(subcategory=>String(subcategory.official_category_id)===String(firstCategory?.id||""))?.id||"",operation_date:selectedPeriod?.start_date||"",payment_date:selectedPeriod?.start_date||""});
   }
   function changeDraftType(type){
     const firstCategory=categories.find(category=>category.kind===type);
-    setDraft(current=>({...current,transaction_type:type,official_category_id:firstCategory?.id||"",subcategory_id:""}));
+    const firstSubcategory=subcategories.find(subcategory=>String(subcategory.official_category_id)===String(firstCategory?.id||""));
+    setDraft(current=>({...current,transaction_type:type,official_category_id:firstCategory?.id||"",subcategory_id:firstSubcategory?.id||""}));
   }
   async function saveDraft(event){
     event.preventDefault();setSaving(true);setError("");setNotice("");
@@ -499,7 +475,12 @@ function TreasuryPage({ profile, onBack }) {
     if(result.error)throw new Error(result.error.message);
     setPendingDelete(null);setNotice("Brouillon supprimé.");await loadTreasury(periodId);
   }
-  const availableSubcategories=subcategories.filter(subcategory=>subcategory.official_category_id===draft.official_category_id);
+  const availableSubcategories=subcategories.filter(subcategory=>String(subcategory.official_category_id)===String(draft.official_category_id));
+  function changeOfficialCategory(categoryId){
+    const normalizedId=String(categoryId||"");
+    const firstSubcategory=subcategories.find(subcategory=>String(subcategory.official_category_id)===normalizedId);
+    setDraft(current=>({...current,official_category_id:normalizedId,subcategory_id:firstSubcategory?.id||""}));
+  }
   const visible=operations.filter(operation=>(isAdmin||operation.status!=="brouillon")&&(typeFilter==="tous"||(typeFilter==="brouillon"?operation.status==="brouillon":operation.display_type===typeFilter||operation.transaction_type===typeFilter))&&(accountFilter==="tous"||operation.account_type===accountFilter));
   const selectedPeriod=periods.find(period=>period.id===periodId);
 
@@ -519,7 +500,7 @@ function TreasuryPage({ profile, onBack }) {
       <section className="treasury-toolbar"><div><label>Type</label><select value={typeFilter} onChange={event=>setTypeFilter(event.target.value)}><option value="tous">Toutes les opérations</option><option value="recette">Recettes</option><option value="depense">Dépenses</option><option value="annulation_recette">Annulations de recettes</option><option value="annulation_depense">Annulations de dépenses</option>{isAdmin&&<option value="brouillon">Brouillons</option>}</select></div><div><label>Compte</label><select value={accountFilter} onChange={event=>setAccountFilter(event.target.value)}><option value="tous">Banque et caisse</option><option value="banque">Compte bancaire</option><option value="caisse">Caisse</option></select></div><span>{visible.length} opération{visible.length>1?"s":""}</span></section>
       {!visible.length?<section className="treasury-empty"><WalletCards/><h2>Aucune opération</h2><p>{isAdmin?"Aucun mouvement ou brouillon n’a encore été enregistré pour cet exercice.":"Aucun mouvement validé n’est encore disponible pour cet exercice."}</p></section>:<section className="treasury-list">{visible.map(operation=><article className={`treasury-row treasury-${operation.transaction_type}`} key={operation.id}><div className="treasury-date"><strong>{new Date(operation.operation_date+"T12:00:00").getDate()}</strong><span>{new Date(operation.operation_date+"T12:00:00").toLocaleDateString("fr-BE",{month:"short",year:"numeric"})}</span></div><div className="treasury-operation"><div className="treasury-operation-top"><span className={`treasury-type treasury-type-${operation.display_type}`}>{operation.status==="brouillon"?"Brouillon":operation.display_type?.replace("_"," ")}</span>{operation.internal_reference&&<code>{operation.internal_reference}</code>}</div><h2>{operation.description}</h2><p>{operation.counterparty} · {operation.official_category_name}{operation.subcategory_name?` · ${operation.subcategory_name}`:""}</p><small>{operation.account_type==="banque"?"Compte bancaire":"Caisse"} · {operation.attachment_count||0} justificatif{operation.attachment_count>1?"s":""}{operation.attachment_count>0?" (accès administrateur)":""}</small>{isAdmin&&operation.status==="brouillon"&&<div className="treasury-draft-actions"><button type="button" onClick={()=>openDraftForm(operation)}><Pencil size={16}/>Modifier</button><button type="button" className="danger-link" onClick={()=>setPendingDelete(operation)}><Trash2 size={16}/>Supprimer</button></div>}</div><strong className={`treasury-amount ${operation.transaction_type==="recette"?"positive":operation.transaction_type==="depense"?"negative":"neutral"}`}>{operation.transaction_type==="depense"?"−":operation.transaction_type==="recette"?"+":""}{euro(operation.amount)}</strong></article>)}</section>}
     </>}
-    {formOpen?<div className="treasury-form-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget&&!saving){setEditing(null);setFormOpen(false);setDraft(emptyDraft)}}}><section className="treasury-form-modal" role="dialog" aria-modal="true"><div className="treasury-form-head"><div><span className="pill">Brouillon</span><h2>{editing?"Modifier l’opération":"Nouvelle opération"}</h2></div><button type="button" onClick={()=>{setEditing(null);setFormOpen(false);setDraft(emptyDraft)}} disabled={saving} aria-label="Fermer"><X/></button></div><form onSubmit={saveDraft} className="treasury-form"><div className="treasury-form-grid"><label>Type<select value={draft.transaction_type} disabled={Boolean(editing)} onChange={event=>changeDraftType(event.target.value)}><option value="recette">Recette</option><option value="depense">Dépense</option></select></label><label>Compte<select value={draft.account_type} onChange={event=>setDraft({...draft,account_type:event.target.value})}><option value="banque">Compte bancaire</option><option value="caisse">Caisse</option></select></label><label>Montant total (€)<input type="number" min="0.01" step="0.01" required value={draft.amount} onChange={event=>setDraft({...draft,amount:event.target.value})}/></label><label>Date de l’opération<input type="date" required min={selectedPeriod?.start_date} max={selectedPeriod?.end_date} value={draft.operation_date} onChange={event=>setDraft({...draft,operation_date:event.target.value})}/></label><label>Date de paiement<input type="date" min={selectedPeriod?.start_date} max={selectedPeriod?.end_date} value={draft.payment_date} onChange={event=>setDraft({...draft,payment_date:event.target.value})}/></label><label>Date de facture<input type="date" value={draft.invoice_date} onChange={event=>setDraft({...draft,invoice_date:event.target.value})}/></label><label>Catégorie officielle<select required value={draft.official_category_id} onChange={event=>setDraft({...draft,official_category_id:event.target.value,subcategory_id:""})}><option value="">Choisir…</option>{categories.filter(category=>category.kind===draft.transaction_type).map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Sous-catégorie<select required value={draft.subcategory_id} onChange={event=>setDraft({...draft,subcategory_id:event.target.value})}><option value="">Choisir…</option>{availableSubcategories.map(subcategory=><option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}</select></label><label className="treasury-wide">Description<input required minLength="2" value={draft.description} onChange={event=>setDraft({...draft,description:event.target.value})}/></label><label className="treasury-wide">Fournisseur, bénéficiaire ou origine<input required minLength="2" value={draft.counterparty} onChange={event=>setDraft({...draft,counterparty:event.target.value})}/></label><label>Numéro de facture<input value={draft.invoice_number} onChange={event=>setDraft({...draft,invoice_number:event.target.value})}/></label><label>Référence bancaire<input value={draft.bank_reference} onChange={event=>setDraft({...draft,bank_reference:event.target.value})}/></label><label className="treasury-wide">Notes internes<textarea rows="3" value={draft.internal_notes} onChange={event=>setDraft({...draft,internal_notes:event.target.value})}/></label></div><div className="treasury-form-actions"><button type="button" className="confirm-cancel" onClick={()=>{setEditing(null);setFormOpen(false);setDraft(emptyDraft)}} disabled={saving}>Annuler</button><button className="primary" disabled={saving}>{saving?<><LoaderCircle className="spin" size={18}/>Enregistrement…</>:"Enregistrer le brouillon"}</button></div></form></section></div>:null}
+    {formOpen?<div className="treasury-form-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget&&!saving){setEditing(null);setFormOpen(false);setDraft(emptyDraft)}}}><section className="treasury-form-modal" role="dialog" aria-modal="true"><div className="treasury-form-head"><div><span className="pill">Brouillon</span><h2>{editing?"Modifier l’opération":"Nouvelle opération"}</h2></div><button type="button" onClick={()=>{setEditing(null);setFormOpen(false);setDraft(emptyDraft)}} disabled={saving} aria-label="Fermer"><X/></button></div><form onSubmit={saveDraft} className="treasury-form"><div className="treasury-form-grid"><label>Type<select value={draft.transaction_type} disabled={Boolean(editing)} onChange={event=>changeDraftType(event.target.value)}><option value="recette">Recette</option><option value="depense">Dépense</option></select></label><label>Compte<select value={draft.account_type} onChange={event=>setDraft({...draft,account_type:event.target.value})}><option value="banque">Compte bancaire</option><option value="caisse">Caisse</option></select></label><label>Montant total (€)<input type="number" min="0.01" step="0.01" required value={draft.amount} onChange={event=>setDraft({...draft,amount:event.target.value})}/></label><label>Date de l’opération<input type="date" required min={selectedPeriod?.start_date} max={selectedPeriod?.end_date} value={draft.operation_date} onChange={event=>setDraft({...draft,operation_date:event.target.value})}/></label><label>Date de paiement<input type="date" min={selectedPeriod?.start_date} max={selectedPeriod?.end_date} value={draft.payment_date} onChange={event=>setDraft({...draft,payment_date:event.target.value})}/></label><label>Date de facture<input type="date" value={draft.invoice_date} onChange={event=>setDraft({...draft,invoice_date:event.target.value})}/></label><label>Catégorie officielle<select required value={draft.official_category_id} onChange={event=>changeOfficialCategory(event.target.value)}><option value="">Choisir…</option>{categories.filter(category=>category.kind===draft.transaction_type).map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Sous-catégorie<select required value={draft.subcategory_id} onChange={event=>setDraft({...draft,subcategory_id:event.target.value})}><option value="">Choisir…</option>{availableSubcategories.map(subcategory=><option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}</select></label><label className="treasury-wide">Description<input required minLength="2" value={draft.description} onChange={event=>setDraft({...draft,description:event.target.value})}/></label><label className="treasury-wide">Fournisseur, bénéficiaire ou origine<input required minLength="2" value={draft.counterparty} onChange={event=>setDraft({...draft,counterparty:event.target.value})}/></label><label>Numéro de facture<input value={draft.invoice_number} onChange={event=>setDraft({...draft,invoice_number:event.target.value})}/></label><label>Référence bancaire<input value={draft.bank_reference} onChange={event=>setDraft({...draft,bank_reference:event.target.value})}/></label><label className="treasury-wide">Notes internes<textarea rows="3" value={draft.internal_notes} onChange={event=>setDraft({...draft,internal_notes:event.target.value})}/></label></div><div className="treasury-form-actions"><button type="button" className="confirm-cancel" onClick={()=>{setEditing(null);setFormOpen(false);setDraft(emptyDraft)}} disabled={saving}>Annuler</button><button className="primary" disabled={saving}>{saving?<><LoaderCircle className="spin" size={18}/>Enregistrement…</>:"Enregistrer le brouillon"}</button></div></form></section></div>:null}
     <ConfirmDialog open={Boolean(pendingDelete)} title="Supprimer ce brouillon ?" description={pendingDelete?`Le brouillon « ${pendingDelete.description} » sera supprimé définitivement.`:""} warning="Seuls les brouillons peuvent être supprimés." onCancel={()=>setPendingDelete(null)} onConfirm={deleteDraft}/>
   </main>;
 }
