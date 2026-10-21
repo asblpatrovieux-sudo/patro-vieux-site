@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Menu, X, Mail, Phone, MapPin, Users, Trees, CalendarDays,
-  LockKeyhole, ChevronRight, LogIn, LogOut, ShieldCheck, LoaderCircle, Plus, Trash2, Clock, Filter, BookOpen, Search, Pin, ExternalLink, MessageCircle, Send, Link2, ToggleLeft, ToggleRight, Pencil, Paperclip, FileText, Download
+  LockKeyhole, ChevronRight, LogIn, LogOut, ShieldCheck, LoaderCircle, Plus, Trash2, Clock, Filter, BookOpen, Search, Pin, ExternalLink, MessageCircle, Send, Link2, ToggleLeft, ToggleRight, Pencil, Paperclip, FileText, Download, WalletCards
 } from "lucide-react";
 import { neon, neonPasswordAuth } from "./neon";
 import "./style.css";
@@ -185,7 +185,7 @@ function App() {
         }}
       />
     ) : authView ? (
-      activeUser ? (privatePage === "calendar" ? <CalendarPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "posts" ? <PostsPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "links" ? <UsefulLinksPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "admin-users" ? <AdminUsersPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : <MemberDashboard profile={profile} onLogout={signOut} openCalendar={() => setPrivatePage("calendar")} openPosts={() => setPrivatePage("posts")} openLinks={() => setPrivatePage("links")} openAdmin={() => setPrivatePage("admin-users")} />)
+      activeUser ? (privatePage === "calendar" ? <CalendarPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "posts" ? <PostsPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "links" ? <UsefulLinksPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "treasury" ? <TreasuryPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : privatePage === "admin-users" ? <AdminUsersPage profile={profile} onBack={() => setPrivatePage("dashboard")} /> : <MemberDashboard profile={profile} onLogout={signOut} openCalendar={() => setPrivatePage("calendar")} openPosts={() => setPrivatePage("posts")} openLinks={() => setPrivatePage("links")} openTreasury={() => setPrivatePage("treasury")} openAdmin={() => setPrivatePage("admin-users")} />)
       : session && profile ? <PendingAccount profile={profile} onLogout={signOut} />
       : authMode === "register" ? <RegisterPage onBack={() => setAuthView(false)} onLogin={() => setAuthMode("login")} />
       : authMode === "forgot" ? <ForgotPasswordPage initialError={recoveryError} onBack={() => { setRecoveryError(""); setAuthMode("login"); }} />
@@ -382,7 +382,7 @@ function PendingAccount({ profile, onLogout }) {
   </section></main>;
 }
 
-function MemberDashboard({ profile, onLogout, openCalendar, openPosts, openLinks, openAdmin }) {
+function MemberDashboard({ profile, onLogout, openCalendar, openPosts, openLinks, openTreasury, openAdmin }) {
   const isAdmin = profile.role === "administrateur";
   return <main className="dashboard-page">
     <section className="dashboard-head">
@@ -393,12 +393,69 @@ function MemberDashboard({ profile, onLogout, openCalendar, openPosts, openLinks
       <article className="clickable-card" onClick={openCalendar}><CalendarDays /><h2>Calendrier et réservations</h2><p>Consulter et gérer les événements et réservations du local.</p><button className="card-link">Ouvrir <ChevronRight size={17} /></button></article>
       <article className="clickable-card" onClick={openPosts}><BookOpen /><h2>Espace administratif</h2><p>Consulter les tutoriels, procédures et informations de l’ASBL.</p><button className="card-link">Ouvrir <ChevronRight size={17} /></button></article>
       <article className="clickable-card" onClick={openLinks}><Link2 /><h2>Liens utiles</h2><p>Accéder rapidement aux outils, documents et ressources de l’ASBL.</p><button className="card-link">Ouvrir <ChevronRight size={17} /></button></article>
+      <article className="clickable-card treasury-dashboard-card" onClick={openTreasury}><WalletCards/><h2>Suivi de trésorerie</h2><p>Consulter les soldes, recettes, dépenses et dernières opérations de l’ASBL.</p><button className="card-link">Ouvrir <ChevronRight size={17} /></button></article>
       {isAdmin && <article className="admin-card clickable-card" onClick={openAdmin}><ShieldCheck /><h2>Administration</h2><p>Valider les inscriptions et gérer les rôles et les accès.</p><button className="admin-card-link">Gérer les membres <ChevronRight size={17} /></button></article>}
     </section>
   </main>;
 }
 
 
+
+
+function TreasuryPage({ profile, onBack }) {
+  const isAdmin = profile.role === "administrateur";
+  const [summary,setSummary]=useState(null),[operations,setOperations]=useState([]),[periods,setPeriods]=useState([]);
+  const [periodId,setPeriodId]=useState(""),[typeFilter,setTypeFilter]=useState("tous"),[accountFilter,setAccountFilter]=useState("tous");
+  const [loading,setLoading]=useState(true),[error,setError]=useState("");
+  const euro=value=>new Intl.NumberFormat("fr-BE",{style:"currency",currency:"EUR"}).format(Number(value||0));
+
+  async function loadPeriods(){
+    const {data,error:periodError}=await neon.from("treasury_periods").select("id,label,start_date,end_date,is_closed").order("start_date",{ascending:false});
+    if(periodError)throw periodError;
+    setPeriods(data||[]);
+    const preferred=(data||[]).find(period=>!period.is_closed)||data?.[0];
+    if(preferred&&!periodId)setPeriodId(preferred.id);
+    return preferred?.id||periodId;
+  }
+
+  async function loadTreasury(targetPeriodId=periodId){
+    if(!targetPeriodId)return;
+    setLoading(true);setError("");
+    const [summaryResult,operationsResult]=await Promise.all([
+      neon.from("treasury_period_summary").select("*").eq("period_id",targetPeriodId).maybeSingle(),
+      neon.from("treasury_transaction_details").select("id,period_id,internal_reference,transaction_type,status,account_type,amount,description,counterparty,operation_date,official_category_name,subcategory_name,attachment_count,attachment_names,display_type").eq("period_id",targetPeriodId).order("operation_date",{ascending:false}).order("created_at",{ascending:false}),
+    ]);
+    if(summaryResult.error)throw summaryResult.error;
+    if(operationsResult.error)throw operationsResult.error;
+    setSummary(summaryResult.data||null);
+    setOperations(operationsResult.data||[]);
+    setLoading(false);
+  }
+
+  useEffect(()=>{(async()=>{try{const id=await loadPeriods();if(id)await loadTreasury(id);else setLoading(false)}catch(loadError){setError("Impossible de charger la trésorerie : "+loadError.message);setLoading(false)}})()},[]);
+  useEffect(()=>{if(periodId&&!loading)loadTreasury(periodId).catch(loadError=>{setError("Impossible de charger la trésorerie : "+loadError.message);setLoading(false)})},[periodId]);
+
+  const visible=operations.filter(operation=>(isAdmin||operation.status!=="brouillon")&&(typeFilter==="tous"||(typeFilter==="brouillon"?operation.status==="brouillon":operation.display_type===typeFilter||operation.transaction_type===typeFilter))&&(accountFilter==="tous"||operation.account_type===accountFilter));
+  const selectedPeriod=periods.find(period=>period.id===periodId);
+
+  return <main className="treasury-page">
+    <section className="treasury-head"><div><button className="text-button back-button" onClick={onBack}>← Retour au tableau de bord</button><span className="pill">Suivi financier</span><h1>Trésorerie</h1><p>Consultez les recettes, les dépenses et l’état des comptes de l’ASBL.</p></div><label className="treasury-period-select">Exercice<select value={periodId} onChange={event=>setPeriodId(event.target.value)}>{periods.map(period=><option value={period.id} key={period.id}>{period.label}{period.is_closed?" · clôturé":""}</option>)}</select></label></section>
+    {error&&<p className="form-error calendar-error">{error}</p>}
+    {loading?<div className="calendar-loading"><LoaderCircle className="spin"/> Chargement de la trésorerie…</div>:<>
+      {!summary?.opening_balances_confirmed&&<p className="treasury-warning">Les soldes d’ouverture de l’exercice {selectedPeriod?.label||""} doivent encore être confirmés par un administrateur.</p>}
+      <section className="treasury-summary-grid">
+        <article><span>Compte bancaire</span><strong>{euro(summary?.bank_balance)}</strong></article>
+        <article><span>Caisse</span><strong>{euro(summary?.cash_balance)}</strong></article>
+        <article className="treasury-global"><span>Solde global</span><strong>{euro(summary?.global_balance)}</strong></article>
+        <article className="treasury-receipts"><span>Recettes nettes</span><strong>{euro(summary?.net_receipts)}</strong></article>
+        <article className="treasury-expenses"><span>Dépenses nettes</span><strong>{euro(summary?.net_expenses)}</strong></article>
+        {isAdmin&&<article><span>Brouillons</span><strong>{summary?.draft_count||0}</strong></article>}
+      </section>
+      <section className="treasury-toolbar"><div><label>Type</label><select value={typeFilter} onChange={event=>setTypeFilter(event.target.value)}><option value="tous">Toutes les opérations</option><option value="recette">Recettes</option><option value="depense">Dépenses</option><option value="annulation_recette">Annulations de recettes</option><option value="annulation_depense">Annulations de dépenses</option>{isAdmin&&<option value="brouillon">Brouillons</option>}</select></div><div><label>Compte</label><select value={accountFilter} onChange={event=>setAccountFilter(event.target.value)}><option value="tous">Banque et caisse</option><option value="banque">Compte bancaire</option><option value="caisse">Caisse</option></select></div><span>{visible.length} opération{visible.length>1?"s":""}</span></section>
+      {!visible.length?<section className="treasury-empty"><WalletCards/><h2>Aucune opération</h2><p>{isAdmin?"Aucun mouvement ou brouillon n’a encore été enregistré pour cet exercice.":"Aucun mouvement validé n’est encore disponible pour cet exercice."}</p></section>:<section className="treasury-list">{visible.map(operation=><article className={`treasury-row treasury-${operation.transaction_type}`} key={operation.id}><div className="treasury-date"><strong>{new Date(operation.operation_date+"T12:00:00").getDate()}</strong><span>{new Date(operation.operation_date+"T12:00:00").toLocaleDateString("fr-BE",{month:"short",year:"numeric"})}</span></div><div className="treasury-operation"><div className="treasury-operation-top"><span className={`treasury-type treasury-type-${operation.display_type}`}>{operation.status==="brouillon"?"Brouillon":operation.display_type?.replace("_"," ")}</span>{operation.internal_reference&&<code>{operation.internal_reference}</code>}</div><h2>{operation.description}</h2><p>{operation.counterparty} · {operation.official_category_name}{operation.subcategory_name?` · ${operation.subcategory_name}`:""}</p><small>{operation.account_type==="banque"?"Compte bancaire":"Caisse"} · {operation.attachment_count||0} justificatif{operation.attachment_count>1?"s":""}{operation.attachment_count>0?" (accès administrateur)":""}</small></div><strong className={`treasury-amount ${operation.transaction_type==="recette"?"positive":operation.transaction_type==="depense"?"negative":"neutral"}`}>{operation.transaction_type==="depense"?"−":operation.transaction_type==="recette"?"+":""}{euro(operation.amount)}</strong></article>)}</section>}
+    </>}
+  </main>;
+}
 
 
 function ConfirmDialog({ open, title, description, warning = "Cette action est irréversible.", confirmLabel = "Confirmer la suppression", onCancel, onConfirm }) {
