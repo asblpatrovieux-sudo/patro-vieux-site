@@ -439,10 +439,11 @@ function TreasuryPage({ profile, onBack }) {
   useEffect(()=>{(async()=>{try{const id=await loadPeriods();if(id)await loadTreasury(id);else setLoading(false)}catch(loadError){setError("Impossible de charger la trésorerie : "+loadError.message);setLoading(false)}})()},[]);
   useEffect(()=>{if(periodId&&!loading)loadTreasury(periodId).catch(loadError=>{setError("Impossible de charger la trésorerie : "+loadError.message);setLoading(false)})},[periodId]);
 
-  function categoryMatchesTransactionType(categoryKind,transactionType){
-    const normalizedKind=String(categoryKind||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z]/g,"");
-    const normalizedType=String(transactionType||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z]/g,"");
-    return normalizedKind===normalizedType||normalizedKind===`${normalizedType}s`;
+  function categoryMatchesTransactionType(categoryKind, transactionType){
+    const normalize=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z]/g,"");
+    const kind=normalize(categoryKind);
+    const type=normalize(transactionType);
+    return kind===type||kind===`${type}s`||kind.startsWith(type)||type.startsWith(kind);
   }
   async function loadCategories(){
     const [officialResult,subResult]=await Promise.all([
@@ -451,13 +452,8 @@ function TreasuryPage({ profile, onBack }) {
     ]);
     const officialCount=officialResult.data?.length||0;
     const subcategoryCount=subResult.data?.length||0;
-    if(officialResult.error||subResult.error){
-      const details=[
-        officialResult.error?`Catégories officielles : ${officialResult.error.message}`:`Catégories officielles : ${officialCount} reçue${officialCount>1?"s":""}`,
-        subResult.error?`Sous-catégories : ${subResult.error.message}`:`Sous-catégories : ${subcategoryCount} reçue${subcategoryCount>1?"s":""}`,
-      ].join(" · ");
-      throw new Error(details);
-    }
+    const details=[officialResult.error?`Catégories officielles : ${officialResult.error.message}`:`Catégories officielles reçues : ${officialCount}`,subResult.error?`Sous-catégories : ${subResult.error.message}`:`Sous-catégories reçues : ${subcategoryCount}`].join(" · ");
+    if(officialResult.error||subResult.error)throw new Error(details);
     setCategories(officialResult.data||[]);setSubcategories(subResult.data||[]);
   }
   useEffect(()=>{if(isAdmin)loadCategories().catch(loadError=>setError("Impossible de charger les catégories : "+loadError.message))},[]);
@@ -548,7 +544,7 @@ function TreasuryPage({ profile, onBack }) {
       setAttachmentBusy(false);
     }
   }
-  const availableSubcategories=subcategories.filter(subcategory=>subcategory.official_category_id===draft.official_category_id);
+  const availableSubcategories=subcategories.filter(subcategory=>String(subcategory.official_category_id||"").trim().toLowerCase()===String(draft.official_category_id||"").trim().toLowerCase());
   const visible=operations.filter(operation=>(isAdmin||operation.status!=="brouillon")&&(typeFilter==="tous"||(typeFilter==="brouillon"?operation.status==="brouillon":operation.display_type===typeFilter||operation.transaction_type===typeFilter))&&(accountFilter==="tous"||operation.account_type===accountFilter));
   const selectedPeriod=periods.find(period=>period.id===periodId);
 
