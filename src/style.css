@@ -108,7 +108,7 @@
 .forgot-button{margin-top:14px;color:#166534;text-decoration:underline;text-underline-offset:3px}
 
 /* Modal de confirmation personnalisée */
-.confirm-backdrop{position:fixed;inset:0;z-index:200;background:#0f172aaa;display:grid;place-items:center;padding:20px;backdrop-filter:blur(4px)}
+.confirm-backdrop{position:fixed;inset:0;z-index:2000;background:#0f172aaa;display:grid;place-items:center;padding:20px;backdrop-filter:blur(4px)}
 .confirm-dialog{width:min(100%,500px);background:white;border-radius:24px;padding:30px;box-shadow:0 24px 70px #02061755;outline:none}
 .confirm-dialog-icon{width:52px;height:52px;display:grid;place-items:center;border-radius:16px;background:#fee2e2;color:#991b1b}
 .confirm-dialog h2{margin:18px 0 8px;font-size:1.6rem;line-height:1.2}
