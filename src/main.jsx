@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   Menu, X, Mail, Phone, MapPin, Users, Trees, CalendarDays,
@@ -627,7 +628,8 @@ function ConfirmDialog({ open, title, description, warning = "Cette action est i
     }
   }
 
-  return <div className="confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onCancel(); }}>
+  return createPortal(
+    <div className="confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onCancel(); }}>
     <section ref={dialogRef} className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-description">
       <div className="confirm-dialog-icon" aria-hidden="true"><Trash2 /></div>
       <h2 id="confirm-dialog-title">{title}</h2>
@@ -641,7 +643,9 @@ function ConfirmDialog({ open, title, description, warning = "Cette action est i
         </button>
       </div>
     </section>
-  </div>;
+  </div>,
+    document.body
+  );
 }
 
 function UsefulLinksPage({ profile, onBack }) {
